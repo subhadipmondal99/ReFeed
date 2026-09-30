@@ -1,0 +1,21 @@
+[
+  "meal_type_encoded",
+  "day_of_week",
+  "is_weekend",
+  "is_exam",
+  "is_festival",
+  "is_holiday",
+  "temperature",
+  "rainfall_mm",
+  "campus_population",
+  "month",
+  "week_of_year",
+  "sin_day",
+  "cos_day",
+  "lag_1",
+  "lag_7",
+  "lag_14",
+  "rolling_7",
+  "rolling_14",
+  "rolling_30"
+]
