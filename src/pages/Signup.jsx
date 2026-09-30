@@ -1,433 +1,926 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  User,
-  Mail,
-  Phone,
-  LockKeyhole,
+  ArrowRight,
+  BrainCircuit,
+  Check,
+  CheckCircle2,
   Eye,
   EyeOff,
-  ArrowRight,
-  Loader2,
   Leaf,
+  LockKeyhole,
+  Mail,
+  Phone,
+  Recycle,
+  ShieldCheck,
+  Sparkles,
   Users,
+  ChefHat,
+  HeartHandshake,
+  Utensils,
+  UserRound,
 } from "lucide-react";
 
 import { registerUser } from "../firebase/auth";
+import "./Signup.css";
 
 export default function Signup() {
   const navigate = useNavigate();
 
-  const [formData, setFormData] = useState({
+  const [form, setForm] = useState({
     name: "",
     email: "",
     phone: "",
     password: "",
     confirmPassword: "",
-    userType: "",
+    userType: "canteen",
   });
 
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] =
+    useState(false);
 
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-
-    setFormData((previous) => ({
+  const updateField = (field, value) => {
+    setForm((previous) => ({
       ...previous,
-      [name]: value,
+      [field]: value,
+    }));
+
+    setFieldErrors((previous) => ({
+      ...previous,
+      [field]: "",
     }));
 
     setError("");
   };
 
-  const handleSignup = async (e) => {
-    e.preventDefault();
+  const validateForm = () => {
+    const errors = {};
 
+    if (!form.name.trim()) {
+      errors.name = "Full name is required.";
+    } else if (form.name.trim().length < 2) {
+      errors.name = "Please enter your full name.";
+    }
+
+    if (!form.email.trim()) {
+      errors.email = "Email address is required.";
+    } else if (
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+        form.email.trim()
+      )
+    ) {
+      errors.email = "Please enter a valid email.";
+    }
+
+    if (!form.phone.trim()) {
+      errors.phone = "Phone number is required.";
+    } else if (
+      !/^[+]?[0-9\s-]{10,15}$/.test(
+        form.phone.trim()
+      )
+    ) {
+      errors.phone = "Please enter a valid phone number.";
+    }
+
+    if (!form.password) {
+      errors.password = "Password is required.";
+    } else if (form.password.length < 6) {
+      errors.password =
+        "Password must contain at least 6 characters.";
+    }
+
+    if (!form.confirmPassword) {
+      errors.confirmPassword =
+        "Please confirm your password.";
+    } else if (
+      form.password !== form.confirmPassword
+    ) {
+      errors.confirmPassword =
+        "Passwords do not match.";
+    }
+
+    setFieldErrors(errors);
+
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    if (loading || success) return;
+
+    if (!validateForm()) return;
+
+    setLoading(true);
     setError("");
 
-    const {
-      name,
-      email,
-      phone,
-      password,
-      confirmPassword,
-      userType,
-    } = formData;
-
-    // Basic validation
-    if (
-      !name.trim() ||
-      !email.trim() ||
-      !phone.trim() ||
-      !password ||
-      !confirmPassword ||
-      !userType
-    ) {
-      setError("Please fill in all fields.");
-      return;
-    }
-
-    // Phone validation
-    const phoneRegex = /^[0-9]{10}$/;
-
-    if (!phoneRegex.test(phone)) {
-      setError("Please enter a valid 10-digit phone number.");
-      return;
-    }
-
-    // Password validation
-    if (password.length < 6) {
-      setError("Password must contain at least 6 characters.");
-      return;
-    }
-
-    // Confirm password
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-
     try {
-      setLoading(true);
-
       await registerUser({
-        name: name.trim(),
-        email: email.trim(),
-        phone: phone.trim(),
-        password,
-        userType,
+        name: form.name.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        password: form.password,
+        userType: form.userType,
       });
 
-      // Registration successful
-      navigate("/dashboard");
-    } catch (error) {
-      console.error("Signup error:", error);
+      setSuccess(true);
 
-      switch (error.code) {
-        case "auth/email-already-in-use":
-          setError("An account already exists with this email.");
-          break;
+      setTimeout(() => {
+        navigate("/dashboard");
+      }, 900);
+    } catch (err) {
+      console.error("Signup error:", err);
 
-        case "auth/invalid-email":
-          setError("Please enter a valid email address.");
-          break;
+      let message =
+        "Unable to create your account. Please try again.";
 
-        case "auth/weak-password":
-          setError("Password is too weak.");
-          break;
-
-        default:
-          setError("Unable to create account. Please try again.");
+      if (err?.code === "auth/email-already-in-use") {
+        message =
+          "An account already exists with this email.";
+      } else if (err?.code === "auth/invalid-email") {
+        message = "Please enter a valid email address.";
+      } else if (err?.code === "auth/weak-password") {
+        message =
+          "Password is too weak. Please choose a stronger password.";
+      } else if (
+        err?.code === "auth/network-request-failed"
+      ) {
+        message =
+          "Network error. Please check your internet connection.";
       }
-    } finally {
+
+      setError(message);
       setLoading(false);
     }
   };
 
+  const passwordStrength = (() => {
+    const password = form.password;
+
+    if (!password) {
+      return {
+        level: 0,
+        label: "Enter a password",
+      };
+    }
+
+    let score = 0;
+
+    if (password.length >= 6) score++;
+    if (password.length >= 10) score++;
+    if (/[A-Z]/.test(password)) score++;
+    if (/[0-9]/.test(password)) score++;
+    if (/[^A-Za-z0-9]/.test(password)) score++;
+
+    if (score <= 1) {
+      return {
+        level: 1,
+        label: "Weak",
+      };
+    }
+
+    if (score <= 3) {
+      return {
+        level: 2,
+        label: "Good",
+      };
+    }
+
+    return {
+      level: 3,
+      label: "Strong",
+    };
+  })();
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-green-50 flex items-center justify-center px-4 py-10">
+    <main className="signup-page">
+      {/* =====================================================
+          LEFT CINEMATIC PANEL
+      ====================================================== */}
 
-      <div className="w-full max-w-lg">
+      <section className="signup-visual">
+        <div className="signup-glow signup-glow-one" />
+        <div className="signup-glow signup-glow-two" />
+        <div className="signup-glow signup-glow-three" />
 
-        {/* Logo */}
-        <div className="text-center mb-7">
+        <div className="signup-grid" />
 
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-600 text-white shadow-lg mb-4">
-            <Leaf size={32} />
-          </div>
+        {/* Decorative particles */}
+        <span className="signup-particle p1" />
+        <span className="signup-particle p2" />
+        <span className="signup-particle p3" />
+        <span className="signup-particle p4" />
+        <span className="signup-particle p5" />
 
-          <h1 className="text-3xl font-bold text-gray-900">
-            MealRescue
-          </h1>
+        <div className="signup-visual-inner">
+          {/* BRAND */}
+          <header className="signup-brand">
+            <div className="signup-brand-logo">
+              <img
+                src="/logo.png"
+                alt="ReFeed logo"
+              />
+            </div>
 
-          <p className="text-gray-500 mt-2">
-            Predict. Prepare. Rescue.
-          </p>
+            <div>
+              <strong>ReFeed</strong>
+              <span>Smart Food. Zero Waste.</span>
+            </div>
+          </header>
 
-        </div>
+          {/* HERO */}
+          <div className="signup-hero">
+            <div className="signup-ai-pill">
+              <span>
+                <Sparkles size={13} />
+              </span>
 
-        {/* Card */}
-        <div className="bg-white rounded-3xl shadow-xl border border-gray-100 p-7 sm:p-8">
+              BUILD A SMARTER CAMPUS
+            </div>
 
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">
-              Create your account
-            </h2>
+            <h1>
+              Join the
+              <br />
+              <em>Food Rescue</em>
+              <br />
+              Movement.
+            </h1>
 
-            <p className="text-gray-500 mt-1">
-              Join the MealRescue platform
+            <p>
+              Create your ReFeed account and help turn
+              everyday campus meals into measurable
+              environmental and social impact.
             </p>
           </div>
 
-          {/* Error */}
-          {error && (
-            <div className="mb-5 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-              {error}
-            </div>
-          )}
+          {/* IMPACT FLOW */}
+          <div className="signup-flow">
+            <div className="flow-card active">
+              <div className="flow-icon">
+                <BrainCircuit size={18} />
+              </div>
 
-          <form onSubmit={handleSignup} className="space-y-4">
-
-            {/* Full Name */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Full name
-              </label>
-
-              <div className="relative">
-
-                <User
-                  size={19}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-                />
-
-                <input
-                  type="text"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleChange}
-                  placeholder="Enter your full name"
-                  autoComplete="name"
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3.5 pl-12 pr-4 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
-                />
-
+              <div>
+                <span>01</span>
+                <strong>Predict</strong>
+                <small>Demand with AI</small>
               </div>
             </div>
 
-            {/* Email */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Email address
-              </label>
+            <div className="flow-line">
+              <i />
+            </div>
 
-              <div className="relative">
+            <div className="flow-card">
+              <div className="flow-icon">
+                <ChefHat size={18} />
+              </div>
 
-                <Mail
-                  size={19}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-                />
-
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  placeholder="you@example.com"
-                  autoComplete="email"
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3.5 pl-12 pr-4 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
-                />
-
+              <div>
+                <span>02</span>
+                <strong>Prepare</strong>
+                <small>Only what matters</small>
               </div>
             </div>
 
-            {/* Phone */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Phone number
-              </label>
+            <div className="flow-line">
+              <i />
+            </div>
 
-              <div className="relative">
+            <div className="flow-card">
+              <div className="flow-icon">
+                <HeartHandshake size={18} />
+              </div>
 
-                <Phone
-                  size={19}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-                />
+              <div>
+                <span>03</span>
+                <strong>Rescue</strong>
+                <small>Feed communities</small>
+              </div>
+            </div>
+          </div>
 
-                <input
-                  type="tel"
-                  name="phone"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  placeholder="10-digit phone number"
-                  maxLength="10"
-                  autoComplete="tel"
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3.5 pl-12 pr-4 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
-                />
+          {/* IMPACT STATISTICS */}
+          <div className="impact-strip">
+            <div className="impact-stat">
+              <div className="impact-stat-icon">
+                <Utensils size={17} />
+              </div>
 
+              <div>
+                <strong>626+</strong>
+                <span>Meals planned</span>
               </div>
             </div>
 
-            {/* User Type */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                I am joining as
-              </label>
+            <div className="impact-divider" />
 
-              <div className="relative">
+            <div className="impact-stat">
+              <div className="impact-stat-icon">
+                <Recycle size={17} />
+              </div>
 
-                <Users
-                  size={19}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-                />
-
-                <select
-                  name="userType"
-                  value={formData.userType}
-                  onChange={handleChange}
-                  className="w-full appearance-none rounded-xl border border-gray-200 bg-gray-50 py-3.5 pl-12 pr-10 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 text-gray-700"
-                >
-                  <option value="">
-                    Select your role
-                  </option>
-
-                  <option value="canteen_manager">
-                    Canteen Manager
-                  </option>
-
-                  <option value="ngo_partner">
-                    NGO Partner
-                  </option>
-
-                  <option value="admin">
-                    Admin
-                  </option>
-                </select>
-
-                <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
-                  ▼
-                </span>
-
+              <div>
+                <strong>40%</strong>
+                <span>Waste reduction</span>
               </div>
             </div>
 
-            {/* Password */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Password
-              </label>
+            <div className="impact-divider" />
 
-              <div className="relative">
+            <div className="impact-stat">
+              <div className="impact-stat-icon">
+                <Users size={17} />
+              </div>
 
-                <LockKeyhole
-                  size={19}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-                />
-
-                <input
-                  type={showPassword ? "text" : "password"}
-                  name="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  placeholder="Minimum 6 characters"
-                  autoComplete="new-password"
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3.5 pl-12 pr-12 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
-                />
-
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  {showPassword ? (
-                    <EyeOff size={19} />
-                  ) : (
-                    <Eye size={19} />
-                  )}
-                </button>
-
+              <div>
+                <strong>18+</strong>
+                <span>Meals rescued</span>
               </div>
             </div>
+          </div>
 
-            {/* Confirm Password */}
+          {/* QUOTE CARD */}
+          <div className="signup-quote">
+            <div className="quote-mark">“</div>
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Confirm password
-              </label>
+              <p>
+                Every meal saved is a meal that can
+                reach someone who needs it.
+              </p>
 
-              <div className="relative">
-
-                <LockKeyhole
-                  size={19}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-                />
-
-                <input
-                  type={showConfirmPassword ? "text" : "password"}
-                  name="confirmPassword"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  placeholder="Re-enter your password"
-                  autoComplete="new-password"
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3.5 pl-12 pr-12 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
-                />
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setShowConfirmPassword(!showConfirmPassword)
-                  }
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  {showConfirmPassword ? (
-                    <EyeOff size={19} />
-                  ) : (
-                    <Eye size={19} />
-                  )}
-                </button>
-
-              </div>
+              <span>
+                ReFeed • Predict • Reduce • Rescue
+              </span>
             </div>
 
-            {/* Submit */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full mt-2 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3.5 font-semibold text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              {loading ? (
-                <>
-                  <Loader2 size={20} className="animate-spin" />
-                  Creating account...
-                </>
-              ) : (
-                <>
-                  Create account
-                  <ArrowRight size={20} />
-                </>
-              )}
-            </button>
+            <Leaf size={23} />
+          </div>
 
-          </form>
-
-          {/* Login link */}
-          <div className="mt-6 text-center text-sm">
-
-            <span className="text-gray-500">
-              Already have an account?{" "}
+          {/* FOOTER */}
+          <footer className="signup-visual-footer">
+            <span>
+              <i />
+              Intelligent food management
             </span>
 
-            <Link
-              to="/login"
-              className="font-semibold text-emerald-600 hover:text-emerald-700"
-            >
-              Sign in
-            </Link>
-
-          </div>
-
-          <div className="mt-4 text-center">
-
-            <Link
-              to="/"
-              className="text-sm text-gray-400 hover:text-emerald-600"
-            >
-              ← Back to home
-            </Link>
-
-          </div>
-
+            <span>ReFeed © 2026</span>
+          </footer>
         </div>
+      </section>
 
-        <p className="text-center text-xs text-gray-400 mt-5">
-          © 2026 MealRescue • Campus Food Waste Prevention
-        </p>
+      {/* =====================================================
+          RIGHT SIGNUP PANEL
+      ====================================================== */}
 
-      </div>
+      <section className="signup-panel">
+        <div className="signup-panel-glow one" />
+        <div className="signup-panel-glow two" />
 
-    </div>
+        <div className="signup-container">
+          {/* MOBILE BRAND */}
+          <div className="signup-mobile-brand">
+            <div>
+              <img
+                src="/logo.png"
+                alt="ReFeed"
+              />
+            </div>
+
+            <span>
+              <strong>ReFeed</strong>
+              Smart Food. Zero Waste.
+            </span>
+          </div>
+
+          {/* SIGNUP CARD */}
+          <div className="signup-card">
+            {/* HEADER */}
+            <div className="signup-heading">
+              <div className="signup-heading-icon">
+                <Sparkles size={18} />
+              </div>
+
+              <span className="signup-eyebrow">
+                START YOUR JOURNEY
+              </span>
+
+              <h2>Create Account</h2>
+
+              <p>
+                Join ReFeed and start making
+                <br className="signup-desktop-break" />
+                smarter food decisions.
+              </p>
+            </div>
+
+            {/* PROGRESS */}
+            <div className="signup-progress">
+              <div className="progress-info">
+                <span>ACCOUNT SETUP</span>
+                <strong>Step 1 of 1</strong>
+              </div>
+
+              <div className="progress-track">
+                <span />
+              </div>
+            </div>
+
+            {/* ALERT */}
+            {error && (
+              <div className="signup-alert">
+                <span>!</span>
+                <p>{error}</p>
+              </div>
+            )}
+
+            {/* SUCCESS */}
+            {success && (
+              <div className="signup-success">
+                <div>
+                  <Check size={15} />
+                </div>
+
+                <span>
+                  Account created successfully.
+                </span>
+              </div>
+            )}
+
+            {/* FORM */}
+            <form
+              className="signup-form"
+              onSubmit={handleSubmit}
+              noValidate
+            >
+              {/* NAME */}
+              <div className="signup-field">
+                <label htmlFor="signup-name">
+                  Full name
+                </label>
+
+                <div
+                  className={`signup-input ${
+                    fieldErrors.name
+                      ? "invalid"
+                      : ""
+                  }`}
+                >
+                  <UserRound
+                    size={17}
+                    className="signup-input-icon"
+                  />
+
+                  <input
+                    id="signup-name"
+                    type="text"
+                    value={form.name}
+                    placeholder="Enter your full name"
+                    autoComplete="name"
+                    disabled={loading || success}
+                    onChange={(event) =>
+                      updateField(
+                        "name",
+                        event.target.value
+                      )
+                    }
+                  />
+
+                  {form.name &&
+                    !fieldErrors.name && (
+                      <CheckCircle2
+                        size={15}
+                        className="signup-valid"
+                      />
+                    )}
+                </div>
+
+                {fieldErrors.name && (
+                  <span className="signup-field-error">
+                    {fieldErrors.name}
+                  </span>
+                )}
+              </div>
+
+              {/* EMAIL + PHONE */}
+              <div className="signup-two-fields">
+                <div className="signup-field">
+                  <label htmlFor="signup-email">
+                    Email address
+                  </label>
+
+                  <div
+                    className={`signup-input ${
+                      fieldErrors.email
+                        ? "invalid"
+                        : ""
+                    }`}
+                  >
+                    <Mail
+                      size={17}
+                      className="signup-input-icon"
+                    />
+
+                    <input
+                      id="signup-email"
+                      type="email"
+                      value={form.email}
+                      placeholder="you@example.com"
+                      autoComplete="email"
+                      disabled={loading || success}
+                      onChange={(event) =>
+                        updateField(
+                          "email",
+                          event.target.value
+                        )
+                      }
+                    />
+
+                    {form.email &&
+                      !fieldErrors.email && (
+                        <CheckCircle2
+                          size={15}
+                          className="signup-valid"
+                        />
+                      )}
+                  </div>
+
+                  {fieldErrors.email && (
+                    <span className="signup-field-error">
+                      {fieldErrors.email}
+                    </span>
+                  )}
+                </div>
+
+                <div className="signup-field">
+                  <label htmlFor="signup-phone">
+                    Phone number
+                  </label>
+
+                  <div
+                    className={`signup-input ${
+                      fieldErrors.phone
+                        ? "invalid"
+                        : ""
+                    }`}
+                  >
+                    <Phone
+                      size={17}
+                      className="signup-input-icon"
+                    />
+
+                    <input
+                      id="signup-phone"
+                      type="tel"
+                      value={form.phone}
+                      placeholder="+91 XXXXX XXXXX"
+                      autoComplete="tel"
+                      disabled={loading || success}
+                      onChange={(event) =>
+                        updateField(
+                          "phone",
+                          event.target.value
+                        )
+                      }
+                    />
+                  </div>
+
+                  {fieldErrors.phone && (
+                    <span className="signup-field-error">
+                      {fieldErrors.phone}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* USER TYPE */}
+              <div className="signup-field">
+                <label>Account type</label>
+
+                <div className="role-grid">
+                  <button
+                    type="button"
+                    className={`role-card ${
+                      form.userType === "canteen"
+                        ? "selected"
+                        : ""
+                    }`}
+                    onClick={() =>
+                      updateField(
+                        "userType",
+                        "canteen"
+                      )
+                    }
+                    disabled={loading || success}
+                  >
+                    <span className="role-icon">
+                      <Utensils size={16} />
+                    </span>
+
+                    <span>
+                      <strong>Canteen</strong>
+                      <small>
+                        Manage meals & forecasts
+                      </small>
+                    </span>
+
+                    {form.userType ===
+                      "canteen" && (
+                      <CheckCircle2
+                        size={15}
+                        className="role-check"
+                      />
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`role-card ${
+                      form.userType === "ngo"
+                        ? "selected"
+                        : ""
+                    }`}
+                    onClick={() =>
+                      updateField(
+                        "userType",
+                        "ngo"
+                      )
+                    }
+                    disabled={loading || success}
+                  >
+                    <span className="role-icon">
+                      <HeartHandshake size={16} />
+                    </span>
+
+                    <span>
+                      <strong>NGO</strong>
+                      <small>
+                        Rescue surplus food
+                      </small>
+                    </span>
+
+                    {form.userType === "ngo" && (
+                      <CheckCircle2
+                        size={15}
+                        className="role-check"
+                      />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* PASSWORD */}
+              <div className="signup-two-fields">
+                <div className="signup-field">
+                  <label htmlFor="signup-password">
+                    Password
+                  </label>
+
+                  <div
+                    className={`signup-input ${
+                      fieldErrors.password
+                        ? "invalid"
+                        : ""
+                    }`}
+                  >
+                    <LockKeyhole
+                      size={17}
+                      className="signup-input-icon"
+                    />
+
+                    <input
+                      id="signup-password"
+                      type={
+                        showPassword
+                          ? "text"
+                          : "password"
+                      }
+                      value={form.password}
+                      placeholder="Create password"
+                      autoComplete="new-password"
+                      disabled={loading || success}
+                      onChange={(event) =>
+                        updateField(
+                          "password",
+                          event.target.value
+                        )
+                      }
+                    />
+
+                    <button
+                      type="button"
+                      className="signup-eye"
+                      onClick={() =>
+                        setShowPassword(
+                          (previous) => !previous
+                        )
+                      }
+                      disabled={loading || success}
+                    >
+                      {showPassword ? (
+                        <EyeOff size={17} />
+                      ) : (
+                        <Eye size={17} />
+                      )}
+                    </button>
+                  </div>
+
+                  {/* PASSWORD STRENGTH */}
+                  {form.password && (
+                    <div className="password-strength">
+                      <div className="strength-bars">
+                        <i
+                          className={
+                            passwordStrength.level >=
+                            1
+                              ? `active level-${passwordStrength.level}`
+                              : ""
+                          }
+                        />
+                        <i
+                          className={
+                            passwordStrength.level >=
+                            2
+                              ? `active level-${passwordStrength.level}`
+                              : ""
+                          }
+                        />
+                        <i
+                          className={
+                            passwordStrength.level >=
+                            3
+                              ? `active level-${passwordStrength.level}`
+                              : ""
+                          }
+                        />
+                      </div>
+
+                      <span>
+                        {passwordStrength.label}
+                      </span>
+                    </div>
+                  )}
+
+                  {fieldErrors.password && (
+                    <span className="signup-field-error">
+                      {fieldErrors.password}
+                    </span>
+                  )}
+                </div>
+
+                <div className="signup-field">
+                  <label htmlFor="signup-confirm">
+                    Confirm password
+                  </label>
+
+                  <div
+                    className={`signup-input ${
+                      fieldErrors.confirmPassword
+                        ? "invalid"
+                        : ""
+                    }`}
+                  >
+                    <ShieldCheck
+                      size={17}
+                      className="signup-input-icon"
+                    />
+
+                    <input
+                      id="signup-confirm"
+                      type={
+                        showConfirmPassword
+                          ? "text"
+                          : "password"
+                      }
+                      value={form.confirmPassword}
+                      placeholder="Confirm password"
+                      autoComplete="new-password"
+                      disabled={loading || success}
+                      onChange={(event) =>
+                        updateField(
+                          "confirmPassword",
+                          event.target.value
+                        )
+                      }
+                    />
+
+                    <button
+                      type="button"
+                      className="signup-eye"
+                      onClick={() =>
+                        setShowConfirmPassword(
+                          (previous) => !previous
+                        )
+                      }
+                      disabled={loading || success}
+                    >
+                      {showConfirmPassword ? (
+                        <EyeOff size={17} />
+                      ) : (
+                        <Eye size={17} />
+                      )}
+                    </button>
+                  </div>
+
+                  {fieldErrors.confirmPassword && (
+                    <span className="signup-field-error">
+                      {fieldErrors.confirmPassword}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* TERMS */}
+              <label className="terms">
+                <span className="terms-checkbox">
+                  <input
+                    type="checkbox"
+                    required
+                    disabled={loading || success}
+                  />
+
+                  <span>
+                    <Check size={11} />
+                  </span>
+                </span>
+
+                <p>
+                  I agree to the{" "}
+                  <button type="button">
+                    Terms of Service
+                  </button>{" "}
+                  and{" "}
+                  <button type="button">
+                    Privacy Policy
+                  </button>
+                  .
+                </p>
+              </label>
+
+              {/* CREATE ACCOUNT */}
+              <button
+                type="submit"
+                className={`create-account ${
+                  loading ? "loading" : ""
+                } ${success ? "success" : ""}`}
+                disabled={loading || success}
+              >
+                {loading ? (
+                  <>
+                    <span className="signup-spinner" />
+                    Creating account...
+                  </>
+                ) : success ? (
+                  <>
+                    <Check size={18} />
+                    Account created
+                  </>
+                ) : (
+                  <>
+                    <span>Create Account</span>
+
+                    <span className="create-arrow">
+                      <ArrowRight size={18} />
+                    </span>
+                  </>
+                )}
+              </button>
+            </form>
+
+            {/* LOGIN LINK */}
+            <div className="already-account">
+              <span>Already have an account?</span>
+
+              <Link to="/login">
+                Login
+                <ArrowRight size={14} />
+              </Link>
+            </div>
+
+            {/* SECURITY */}
+            <div className="signup-security">
+              <LockKeyhole size={12} />
+              <span>
+                Your information is securely protected
+              </span>
+            </div>
+          </div>
+
+          <footer className="signup-panel-footer">
+            <span>ReFeed</span>
+            <i />
+            <span>Predict • Reduce • Rescue</span>
+          </footer>
+        </div>
+      </section>
+    </main>
   );
 }

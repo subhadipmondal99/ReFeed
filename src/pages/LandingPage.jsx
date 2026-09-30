@@ -1,574 +1,1050 @@
-import React, { useState } from "react";
-import { Link } from "react-router-dom";
-
+import { useEffect, useState } from "react";
 import {
-  Leaf,
   ArrowRight,
   BrainCircuit,
-  Scale,
+  CheckCircle2,
+  CloudRain,
   HeartHandshake,
-  LineChart,
-  CalendarClock,
-  ChefHat,
-  Utensils,
+  Leaf,
+  Menu,
+  PackageCheck,
+  Recycle,
+  Sparkles,
   Truck,
-  GitBranch,
+  Utensils,
+  X,
+  Zap,
 } from "lucide-react";
+import { Link } from "react-router-dom";
+import "./LandingPage.css";
 
-/*
-|--------------------------------------------------------------------------
-| Error Boundary
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   DATA
+   ========================================================= */
 
-class ErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
+const features = [
+  {
+    icon: BrainCircuit,
+    number: "01",
+    title: "AI Demand Forecasting",
+    description:
+      "Predict tomorrow's lunch and dinner demand using historical meals, academic schedules and weather conditions.",
+    tag: "PREDICT",
+  },
+  {
+    icon: Utensils,
+    number: "02",
+    title: "Smart Preparation",
+    description:
+      "Convert predicted demand into recommended cooking quantities and ingredient requirements.",
+    tag: "PREPARE",
+  },
+  {
+    icon: Recycle,
+    number: "03",
+    title: "Surplus Rescue",
+    description:
+      "Detect excess prepared meals and create a rescue opportunity before safe shelf-life expires.",
+    tag: "RESCUE",
+  },
+  {
+    icon: HeartHandshake,
+    number: "04",
+    title: "Impact Intelligence",
+    description:
+      "Track rescued meals, food waste reduction and social impact through one clear dashboard.",
+    tag: "MEASURE",
+  },
+];
 
-    this.state = {
-      hasError: false,
-    };
-  }
+const workflowSteps = [
+  {
+    number: "01",
+    title: "Predict",
+    description: "AI estimates upcoming meal demand.",
+    icon: BrainCircuit,
+  },
+  {
+    number: "02",
+    title: "Prepare",
+    description: "Calculate meals and ingredients precisely.",
+    icon: Utensils,
+  },
+  {
+    number: "03",
+    title: "Serve",
+    description: "Track real canteen operations.",
+    icon: CheckCircle2,
+  },
+  {
+    number: "04",
+    title: "Rescue",
+    description: "Route surplus to nearby NGOs.",
+    icon: Truck,
+  },
+];
 
-  static getDerivedStateFromError() {
-    return {
-      hasError: true,
-    };
-  }
+/* =========================================================
+   ANIMATED NUMBER
+   ========================================================= */
 
-  componentDidCatch(error, errorInfo) {
-    console.error("LandingPage Error:", error, errorInfo);
-  }
+function AnimatedNumber({ value, suffix = "" }) {
+  const [displayValue, setDisplayValue] = useState(0);
 
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-950 text-red-400">
-          <h2>Something went wrong loading the page.</h2>
-        </div>
+  useEffect(() => {
+    const target = Number(value) || 0;
+    const duration = 1400;
+    const startTime = performance.now();
+
+    let frameId;
+
+    const animate = (currentTime) => {
+      const progress = Math.min(
+        (currentTime - startTime) / duration,
+        1
       );
-    }
 
-    return this.props.children;
-  }
+      const eased =
+        1 - Math.pow(1 - progress, 3);
+
+      setDisplayValue(
+        Math.round(target * eased)
+      );
+
+      if (progress < 1) {
+        frameId = requestAnimationFrame(animate);
+      }
+    };
+
+    frameId = requestAnimationFrame(animate);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+    };
+  }, [value]);
+
+  return (
+    <span>
+      {displayValue.toLocaleString()}
+      {suffix}
+    </span>
+  );
 }
 
-/*
-|--------------------------------------------------------------------------
-| Feature Card
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   NAVBAR
+   ========================================================= */
 
-const FeatureCard = ({
-  icon: Icon,
-  title,
-  description,
-}) => {
+function Navbar() {
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const closeMenu = () => {
+    setMenuOpen(false);
+  };
+
   return (
-    <div className="group relative p-8 bg-slate-900 rounded-2xl border border-slate-800 hover:border-emerald-500/50 transition-all duration-300 hover:shadow-[0_0_30px_-5px_rgba(16,185,129,0.15)]">
-
-      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-emerald-500 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-t-2xl" />
-
-      <div className="w-14 h-14 bg-emerald-500/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-emerald-500/20 transition-colors">
-        <Icon className="w-7 h-7 text-emerald-400" />
-      </div>
-
-      <h3 className="text-xl font-bold text-slate-100 mb-3">
-        {title}
-      </h3>
-
-      <p className="text-slate-400 leading-relaxed">
-        {description}
-      </p>
-
-    </div>
-  );
-};
-
-/*
-|--------------------------------------------------------------------------
-| Workflow Step
-|--------------------------------------------------------------------------
-*/
-
-const StepCircle = ({
-  number,
-  icon: Icon,
-  title,
-  active,
-}) => {
-  return (
-    <div className="flex flex-col items-center relative z-10">
-
-      <div
-        className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-all duration-500 shadow-lg border-2 ${
-          active
-            ? "bg-emerald-500 border-emerald-400 text-slate-950 shadow-emerald-500/30 scale-110"
-            : "bg-slate-900 border-slate-700 text-slate-400"
-        }`}
-      >
-        <Icon className="w-7 h-7" />
-      </div>
-
-      <div className="text-center">
-
-        <div
-          className={`text-sm font-bold tracking-wider uppercase mb-1 ${
-            active
-              ? "text-emerald-400"
-              : "text-slate-500"
-          }`}
+    <header className="rf-navbar">
+      <div className="rf-navbar-inner">
+        <Link
+          to="/"
+          className="rf-brand"
+          onClick={closeMenu}
         >
-          Step {number}
-        </div>
-
-        <div
-          className={`font-semibold ${
-            active
-              ? "text-slate-100"
-              : "text-slate-400"
-          }`}
-        >
-          {title}
-        </div>
-
-      </div>
-
-    </div>
-  );
-};
-
-/*
-|--------------------------------------------------------------------------
-| Landing Page
-|--------------------------------------------------------------------------
-*/
-
-const LandingPage = () => {
-  const [hoveredStep, setHoveredStep] = useState(0);
-
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-emerald-500/30 overflow-x-hidden">
-
-      {/* ================================================================
-          NAVBAR
-      ================================================================ */}
-
-      <nav className="fixed w-full top-0 z-50 bg-slate-950/80 backdrop-blur-md border-b border-slate-800">
-
-        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-
-          {/* Logo */}
-
-          <Link
-            to="/"
-            className="flex items-center gap-2"
-          >
-            <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center">
-              <Leaf className="w-6 h-6 text-slate-950" />
-            </div>
-
-            <span className="text-2xl font-bold tracking-tight">
-              Re
-              <span className="text-emerald-400">
-                Feed
-              </span>
-            </span>
-          </Link>
-
-          {/* Navigation */}
-
-          <div className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-300">
-
-            <a
-              href="#features"
-              className="hover:text-emerald-400 transition-colors"
-            >
-              Features
-            </a>
-
-            <a
-              href="#workflow"
-              className="hover:text-emerald-400 transition-colors"
-            >
-              How it Works
-            </a>
-
-            <a
-              href="#impact"
-              className="hover:text-emerald-400 transition-colors"
-            >
-              Impact
-            </a>
-
+          <div className="rf-brand-logo">
+            <img
+              src="/logo.png"
+              alt="ReFeed logo"
+            />
           </div>
 
-          {/* Dashboard button */}
+          <div className="rf-brand-copy">
+            <span className="rf-brand-name">
+              ReFeed
+            </span>
+
+            <span className="rf-brand-tagline">
+              FOOD • DATA • IMPACT
+            </span>
+          </div>
+        </Link>
+
+        <nav
+          className={`rf-nav-links ${
+            menuOpen ? "open" : ""
+          }`}
+        >
+          <a
+            href="#features"
+            onClick={closeMenu}
+          >
+            Features
+          </a>
+
+          <a
+            href="#workflow"
+            onClick={closeMenu}
+          >
+            Workflow
+          </a>
+
+          <a
+            href="#impact"
+            onClick={closeMenu}
+          >
+            Impact
+          </a>
 
           <Link
             to="/login"
-            className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold rounded-lg transition-colors flex items-center gap-2"
+            className="rf-nav-login mobile-login"
+            onClick={closeMenu}
           >
-            Dashboard
+            Login
+          </Link>
+        </nav>
 
-            <ArrowRight className="w-4 h-4" />
+        <div className="rf-navbar-actions">
+          <Link
+            to="/login"
+            className="rf-nav-login"
+          >
+            Login
           </Link>
 
+          <Link
+            to="/signup"
+            className="rf-nav-button"
+          >
+            Get Started
+            <ArrowRight size={15} />
+          </Link>
         </div>
 
-      </nav>
+        <button
+          type="button"
+          className="rf-menu-button"
+          onClick={() => setMenuOpen(!menuOpen)}
+          aria-label={
+            menuOpen
+              ? "Close navigation"
+              : "Open navigation"
+          }
+        >
+          {menuOpen ? (
+            <X size={22} />
+          ) : (
+            <Menu size={22} />
+          )}
+        </button>
+      </div>
+    </header>
+  );
+}
 
-      {/* ================================================================
-          HERO
-      ================================================================ */}
+/* =========================================================
+   BACKGROUND
+   ========================================================= */
 
-      <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
+function BackgroundScene() {
+  return (
+    <div
+      className="rf-background"
+      aria-hidden="true"
+    >
+      <div className="rf-background-grid" />
 
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-emerald-500/20 rounded-full blur-[120px] pointer-events-none" />
+      <div className="rf-background-glow rf-glow-one" />
+      <div className="rf-background-glow rf-glow-two" />
+      <div className="rf-background-glow rf-glow-three" />
 
-        <div className="max-w-7xl mx-auto px-6 relative z-10 text-center">
+      <div className="rf-background-orb rf-orb-one" />
+      <div className="rf-background-orb rf-orb-two" />
 
-          {/* Badge */}
+      <div className="rf-floating-particles">
+        {Array.from(
+          { length: 24 },
+          (_, index) => (
+            <span
+              key={index}
+              className="rf-particle"
+              style={{
+                "--particle-index": index,
+              }}
+            />
+          )
+        )}
+      </div>
+    </div>
+  );
+}
 
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 text-emerald-400 text-sm font-medium mb-8 border border-emerald-500/20">
+/* =========================================================
+   AI CORE
+   ========================================================= */
 
-            <span className="relative flex h-2 w-2">
+function AICore() {
+  return (
+    <div className="rf-ai-core-wrapper">
+      <div className="rf-ai-shadow" />
 
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+      <div className="rf-ai-orbit rf-ai-orbit-one">
+        <span />
+      </div>
 
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+      <div className="rf-ai-orbit rf-ai-orbit-two">
+        <span />
+      </div>
 
-            </span>
+      <div className="rf-ai-orbit rf-ai-orbit-three">
+        <span />
+      </div>
 
-            Campus Canteen Food Waste Forecaster
+      <div className="rf-ai-core">
+        <div className="rf-ai-core-inner">
+          <img
+            src="/logo.png"
+            alt="ReFeed AI"
+          />
+        </div>
 
+        <div className="rf-ai-core-glow" />
+      </div>
+
+      <div className="rf-ai-core-label">
+        <span className="rf-ai-live-dot" />
+        AI ENGINE
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   FLOATING FORECAST CARD
+   ========================================================= */
+
+function ForecastCard() {
+  return (
+    <div className="rf-floating-card rf-forecast-card">
+      <div className="rf-floating-card-top">
+        <div>
+          <span className="rf-card-label">
+            TOMORROW • LUNCH
+          </span>
+
+          <strong>742 meals</strong>
+        </div>
+
+        <div className="rf-card-icon green">
+          <BrainCircuit size={17} />
+        </div>
+      </div>
+
+      <div className="rf-mini-chart">
+        <span style={{ height: "35%" }} />
+        <span style={{ height: "52%" }} />
+        <span style={{ height: "43%" }} />
+        <span style={{ height: "69%" }} />
+        <span style={{ height: "58%" }} />
+        <span style={{ height: "83%" }} />
+        <span style={{ height: "92%" }} />
+      </div>
+
+      <div className="rf-card-bottom">
+        <span>AI confidence</span>
+        <strong>94.2%</strong>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   WEATHER CARD
+   ========================================================= */
+
+function WeatherCard() {
+  return (
+    <div className="rf-floating-card rf-weather-card">
+      <div className="rf-card-icon cyan">
+        <CloudRain size={18} />
+      </div>
+
+      <div className="rf-weather-copy">
+        <span className="rf-card-label">
+          CAMPUS WEATHER
+        </span>
+
+        <strong>28°</strong>
+
+        <span>Light rain expected</span>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   IMPACT CARD
+   ========================================================= */
+
+function ImpactMiniCard() {
+  return (
+    <div className="rf-floating-card rf-impact-mini-card">
+      <div className="rf-card-icon orange">
+        <HeartHandshake size={18} />
+      </div>
+
+      <div>
+        <span className="rf-card-label">
+          MEALS RESCUED
+        </span>
+
+        <strong>
+          <AnimatedNumber
+            value={1248}
+          />
+        </strong>
+
+        <small>
+          this month
+        </small>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   HERO
+   ========================================================= */
+
+function Hero() {
+  return (
+    <section className="rf-hero">
+      <BackgroundScene />
+
+      <div className="rf-hero-container">
+        <div className="rf-hero-copy">
+          <div className="rf-hero-badge">
+            <span className="rf-badge-pulse" />
+            AI-POWERED CAMPUS FOOD INTELLIGENCE
           </div>
 
-          {/* Heading */}
+          <h1>
+            Feed people.
+            <br />
 
-          <h1 className="text-5xl lg:text-7xl font-extrabold tracking-tight mb-8 leading-tight">
-
-            Smarter Meals.
-            <br className="hidden md:block" />
-
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">
-              Less Waste.
-            </span>
-
+            <span>Not landfills.</span>
           </h1>
 
-          {/* Description */}
-
-          <p className="text-lg lg:text-xl text-slate-400 max-w-2xl mx-auto mb-12 leading-relaxed">
-            An end-to-end AI platform that predicts
-            canteen meal demand, calculates precise
-            ingredients, and automatically dispatches
-            unavoidable surplus to local NGOs.
+          <p>
+            ReFeed predicts campus meal demand,
+            optimizes preparation, detects surplus
+            and connects safe excess food with nearby
+            NGOs.
           </p>
 
-          {/* Buttons */}
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-
+          <div className="rf-hero-actions">
             <Link
-              to="/login"
-              className="w-full sm:w-auto px-8 py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl transition-all shadow-[0_0_20px_-5px_rgba(16,185,129,0.4)] flex items-center justify-center gap-2 text-lg"
+              to="/signup"
+              className="rf-primary-button"
             >
-              Go to Dashboard
-
-              <ArrowRight className="w-5 h-5" />
+              Start with ReFeed
+              <ArrowRight size={17} />
             </Link>
 
             <a
-              href="#features"
-              className="w-full sm:w-auto px-8 py-4 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl transition-all border border-slate-700 flex items-center justify-center gap-2 text-lg"
+              href="#workflow"
+              className="rf-secondary-button"
             >
-              Explore Features
+              Explore the workflow
+              <span>
+                <ArrowRight size={15} />
+              </span>
             </a>
-
           </div>
 
-        </div>
-
-      </section>
-
-      {/* ================================================================
-          FEATURES
-      ================================================================ */}
-
-      <section
-        id="features"
-        className="py-24 bg-slate-950 relative border-t border-slate-900"
-      >
-
-        <div className="max-w-7xl mx-auto px-6">
-
-          <div className="mb-16 text-center">
-
-            <h2 className="text-3xl lg:text-4xl font-bold mb-4">
-              A Complete Sustainability Loop
-            </h2>
-
-            <p className="text-slate-400 max-w-2xl mx-auto text-lg">
-              Designed for hostel mess contractors,
-              canteen managers, and food rescue
-              volunteers to seamlessly collaborate.
-            </p>
-
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
-
-            <FeatureCard
-              icon={BrainCircuit}
-              title="Predict Demand"
-              description="AI-powered time-series forecasting predicts exact lunch and dinner headcount by analyzing academic calendars, weather patterns, and historical attendance."
-            />
-
-            <FeatureCard
-              icon={Scale}
-              title="Prepare Efficiently"
-              description="Automatically converts predicted meal counts into exact raw grocery weights (e.g., 45kg rice, 18kg dal) to prevent over-purchasing and over-cooking."
-            />
-
-            <FeatureCard
-              icon={HeartHandshake}
-              title="Rescue Surplus"
-              description="1-button broadcast trigger. If >20 meals remain unconsumed at 8:30 PM, the system instantly alerts registered local NGOs with quantity and pickup location."
-            />
-
-            <FeatureCard
-              icon={LineChart}
-              title="Track Impact"
-              description="Live visual dashboard continuously tracks total kilograms of food saved and rupees conserved over the academic year, proving tangible ESG impact."
-            />
-
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* ================================================================
-          WORKFLOW
-      ================================================================ */}
-
-      <section
-        id="workflow"
-        className="py-24 bg-slate-900/50 border-t border-slate-900 relative"
-      >
-
-        <div className="max-w-7xl mx-auto px-6">
-
-          <div className="text-center mb-20">
-
-            <h2 className="text-3xl lg:text-4xl font-bold mb-4">
-              How ReFeed Works
-            </h2>
-
-            <p className="text-slate-400 text-lg">
-              From early morning planning to late
-              night food rescue.
-            </p>
-
-          </div>
-
-          <div className="relative max-w-4xl mx-auto">
-
-            {/* Connecting line */}
-
-            <div className="absolute top-8 left-[10%] right-[10%] h-1 bg-slate-800 -z-0 hidden md:block">
-
-              <div
-                className="h-full bg-gradient-to-r from-emerald-500/20 via-emerald-500 to-emerald-500/20"
-                style={{
-                  width: `${(hoveredStep / 3) * 100}%`,
-                  transition: "width 0.5s ease",
-                }}
-              />
-
+          <div className="rf-hero-trust">
+            <div className="rf-trust-item">
+              <CheckCircle2 size={15} />
+              <span>
+                Demand forecasting
+              </span>
             </div>
 
-            {/* Steps */}
-
-            <div
-              className="grid grid-cols-1 md:grid-cols-4 gap-12 md:gap-4 relative z-10"
-              onMouseLeave={() => setHoveredStep(0)}
-            >
-
-              <div
-                onMouseEnter={() => setHoveredStep(0)}
-              >
-                <StepCircle
-                  number={1}
-                  icon={CalendarClock}
-                  title="Predict"
-                  active={hoveredStep >= 0}
-                />
-              </div>
-
-              <div
-                onMouseEnter={() => setHoveredStep(1)}
-              >
-                <StepCircle
-                  number={2}
-                  icon={ChefHat}
-                  title="Prepare"
-                  active={hoveredStep >= 1}
-                />
-              </div>
-
-              <div
-                onMouseEnter={() => setHoveredStep(2)}
-              >
-                <StepCircle
-                  number={3}
-                  icon={Utensils}
-                  title="Serve"
-                  active={hoveredStep >= 2}
-                />
-              </div>
-
-              <div
-                onMouseEnter={() => setHoveredStep(3)}
-              >
-                <StepCircle
-                  number={4}
-                  icon={Truck}
-                  title="Rescue"
-                  active={hoveredStep >= 3}
-                />
-              </div>
-
+            <div className="rf-trust-item">
+              <CheckCircle2 size={15} />
+              <span>
+                Surplus detection
+              </span>
             </div>
 
+            <div className="rf-trust-item">
+              <CheckCircle2 size={15} />
+              <span>
+                NGO dispatch
+              </span>
+            </div>
           </div>
-
         </div>
 
-      </section>
+        <div className="rf-hero-visual">
+          <AICore />
+          <ForecastCard />
+          <WeatherCard />
+          <ImpactMiniCard />
 
-      {/* ================================================================
-          IMPACT
-      ================================================================ */}
+          <div className="rf-visual-status">
+            <span className="rf-status-light" />
+            SYSTEM OPERATIONAL
+          </div>
+        </div>
+      </div>
 
-      <section
-        id="impact"
-        className="py-24 bg-slate-950 border-t border-slate-900"
-      >
+      <div className="rf-scroll-indicator">
+        <span>SCROLL TO EXPLORE</span>
+        <div className="rf-scroll-line" />
+      </div>
+    </section>
+  );
+}
 
-        <div className="max-w-7xl mx-auto px-6 text-center">
+/* =========================================================
+   FEATURES
+   ========================================================= */
 
-          <h2 className="text-3xl lg:text-4xl font-bold mb-4">
-            Measure What Matters
+function Features() {
+  return (
+    <section
+      className="rf-section rf-features-section"
+      id="features"
+    >
+      <div className="rf-section-container">
+        <div className="rf-section-heading">
+          <div className="rf-eyebrow">
+            <span />
+            THE INTELLIGENCE LAYER
+          </div>
+
+          <h2>
+            One system.
+            <br />
+            <span>Every meal.</span>
           </h2>
 
-          <p className="text-slate-400 max-w-2xl mx-auto text-lg">
-            Turn every rescued meal into measurable
-            environmental and social impact.
+          <p>
+            ReFeed connects prediction, preparation,
+            operations and food rescue into one
+            continuous campus workflow.
+          </p>
+        </div>
+
+        <div className="rf-features-grid">
+          {features.map((feature) => {
+            const Icon = feature.icon;
+
+            return (
+              <article
+                className="rf-feature-card"
+                key={feature.number}
+              >
+                <div className="rf-feature-number">
+                  {feature.number}
+                </div>
+
+                <div className="rf-feature-icon">
+                  <Icon size={23} />
+                </div>
+
+                <span className="rf-feature-tag">
+                  {feature.tag}
+                </span>
+
+                <h3>{feature.title}</h3>
+
+                <p>
+                  {feature.description}
+                </p>
+
+                <div className="rf-feature-arrow">
+                  <ArrowRight size={16} />
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* =========================================================
+   WORKFLOW
+   ========================================================= */
+
+function Workflow() {
+  const [activeStep, setActiveStep] =
+    useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActiveStep(
+        (current) =>
+          (current + 1) %
+          workflowSteps.length
+      );
+    }, 3200);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, []);
+
+  const progress =
+    (activeStep /
+      (workflowSteps.length - 1)) *
+    100;
+
+  return (
+    <section
+      className="rf-section rf-workflow-section"
+      id="workflow"
+    >
+      <div className="rf-workflow-bg">
+        <div className="rf-workflow-grid" />
+        <div className="rf-workflow-glow rf-wg-left" />
+        <div className="rf-workflow-glow rf-wg-right" />
+      </div>
+
+      <div className="rf-section-container">
+        <div className="rf-workflow-heading">
+          <div className="rf-eyebrow">
+            <span />
+            END-TO-END WORKFLOW
+          </div>
+
+          <h2>
+            Predict.
+            <span> Prepare.</span>
+            <span> Serve.</span>
+            <span> Rescue.</span>
+          </h2>
+
+          <p>
+            From tomorrow's demand to today's
+            rescued meals, ReFeed connects the
+            entire loop.
+          </p>
+        </div>
+
+        <div className="rf-workflow">
+          <div className="rf-workflow-line">
+            <div
+              className="rf-workflow-line-progress"
+              style={{
+                width: `${progress}%`,
+              }}
+            />
+          </div>
+
+          <div className="rf-workflow-steps">
+            {workflowSteps.map(
+              (step, index) => {
+                const Icon = step.icon;
+
+                const isActive =
+                  index === activeStep;
+
+                const isCompleted =
+                  index < activeStep;
+
+                return (
+                  <button
+                    type="button"
+                    key={step.number}
+                    className={`rf-workflow-step ${
+                      isActive
+                        ? "active"
+                        : ""
+                    } ${
+                      isCompleted
+                        ? "completed"
+                        : ""
+                    }`}
+                    onClick={() =>
+                      setActiveStep(index)
+                    }
+                  >
+                    <div className="rf-workflow-orbit">
+                      <div className="rf-workflow-ring" />
+
+                      <div className="rf-workflow-circle">
+                        <Icon
+                          size={25}
+                          strokeWidth={1.8}
+                        />
+                      </div>
+
+                      {isActive && (
+                        <span className="rf-workflow-pulse" />
+                      )}
+                    </div>
+
+                    <div className="rf-workflow-content">
+                      <span className="rf-workflow-number">
+                        STEP {step.number}
+                      </span>
+
+                      <h3>
+                        {step.title}
+                      </h3>
+
+                      <p>
+                        {step.description}
+                      </p>
+                    </div>
+                  </button>
+                );
+              }
+            )}
+          </div>
+
+          <div className="rf-workflow-center-logo">
+            <div className="rf-logo-orbit orbit-a" />
+            <div className="rf-logo-orbit orbit-b" />
+
+            <div className="rf-logo-core">
+              <img
+                src="/logo.png"
+                alt="ReFeed"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="rf-workflow-status">
+          <div className="rf-live-status">
+            <span />
+            LIVE PROCESS
+          </div>
+
+          <div className="rf-status-separator" />
+
+          <div className="rf-current-process">
+            Currently optimizing{" "}
+            <strong>
+              {
+                workflowSteps[
+                  activeStep
+                ].title
+              }
+            </strong>
+          </div>
+
+          <div className="rf-process-dots">
+            {workflowSteps.map(
+              (step, index) => (
+                <button
+                  key={step.number}
+                  type="button"
+                  aria-label={`Show ${step.title} step`}
+                  className={
+                    index === activeStep
+                      ? "active"
+                      : ""
+                  }
+                  onClick={() =>
+                    setActiveStep(index)
+                  }
+                />
+              )
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* =========================================================
+   IMPACT
+   ========================================================= */
+
+function Impact() {
+  return (
+    <section
+      className="rf-section rf-impact-section"
+      id="impact"
+    >
+      <div className="rf-section-container">
+        <div className="rf-impact-layout">
+          <div className="rf-impact-copy">
+            <div className="rf-eyebrow">
+              <span />
+              MEASURE THE DIFFERENCE
+            </div>
+
+            <h2>
+              Every rescued meal
+              <br />
+              becomes{" "}
+              <span>real impact.</span>
+            </h2>
+
+            <p>
+              Turn daily canteen operations into
+              measurable environmental and social
+              outcomes.
+            </p>
+
+            <div className="rf-impact-list">
+              <div>
+                <CheckCircle2 size={17} />
+                <span>
+                  Reduce unnecessary food
+                  preparation
+                </span>
+              </div>
+
+              <div>
+                <CheckCircle2 size={17} />
+                <span>
+                  Connect surplus with NGOs
+                </span>
+              </div>
+
+              <div>
+                <CheckCircle2 size={17} />
+                <span>
+                  Track cumulative impact
+                </span>
+              </div>
+            </div>
+
+            <Link
+              to="/signup"
+              className="rf-outline-button"
+            >
+              Explore ReFeed
+              <ArrowRight size={16} />
+            </Link>
+          </div>
+
+          <div className="rf-impact-dashboard">
+            <div className="rf-dashboard-top">
+              <div>
+                <span>
+                  IMPACT OVERVIEW
+                </span>
+
+                <strong>
+                  Campus Food Intelligence
+                </strong>
+              </div>
+
+              <div className="rf-dashboard-live">
+                <span />
+                LIVE
+              </div>
+            </div>
+
+            <div className="rf-dashboard-metrics">
+              <div className="rf-dashboard-metric">
+                <span>
+                  MEALS RESCUED
+                </span>
+
+                <strong>
+                  <AnimatedNumber
+                    value={1248}
+                  />
+                </strong>
+
+                <small>
+                  +18.4% this month
+                </small>
+              </div>
+
+              <div className="rf-dashboard-metric">
+                <span>
+                  WASTE AVOIDED
+                </span>
+
+                <strong>
+                  <AnimatedNumber
+                    value={96}
+                    suffix=" kg"
+                  />
+                </strong>
+
+                <small>
+                  food redirected
+                </small>
+              </div>
+            </div>
+
+            <div className="rf-impact-chart">
+              <div className="rf-chart-header">
+                <span>
+                  RESCUE TRAJECTORY
+                </span>
+
+                <span>
+                  LAST 7 DAYS
+                </span>
+              </div>
+
+              <div className="rf-chart-area">
+                <div className="rf-chart-line" />
+
+                <span className="rf-chart-point p1" />
+                <span className="rf-chart-point p2" />
+                <span className="rf-chart-point p3" />
+                <span className="rf-chart-point p4" />
+                <span className="rf-chart-point p5" />
+                <span className="rf-chart-point p6" />
+                <span className="rf-chart-point p7" />
+              </div>
+
+              <div className="rf-chart-days">
+                <span>MON</span>
+                <span>TUE</span>
+                <span>WED</span>
+                <span>THU</span>
+                <span>FRI</span>
+                <span>SAT</span>
+                <span>SUN</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* =========================================================
+   CTA
+   ========================================================= */
+
+function CTA() {
+  return (
+    <section className="rf-cta-section">
+      <div className="rf-cta-glow" />
+
+      <div className="rf-section-container">
+        <div className="rf-cta-card">
+          <div className="rf-cta-icon">
+            <Zap size={22} />
+          </div>
+
+          <h2>
+            Ready to make every meal count?
+          </h2>
+
+          <p>
+            Bring prediction, preparation and
+            food rescue together with ReFeed.
           </p>
 
-          <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-
-            <div className="p-8 rounded-2xl bg-slate-900 border border-slate-800">
-
-              <div className="text-4xl font-bold text-emerald-400">
-                1,284+
-              </div>
-
-              <p className="mt-2 text-slate-400">
-                kg food saved
-              </p>
-
-            </div>
-
-            <div className="p-8 rounded-2xl bg-slate-900 border border-slate-800">
-
-              <div className="text-4xl font-bold text-emerald-400">
-                2,140+
-              </div>
-
-              <p className="mt-2 text-slate-400">
-                meals rescued
-              </p>
-
-            </div>
-
-            <div className="p-8 rounded-2xl bg-slate-900 border border-slate-800">
-
-              <div className="text-4xl font-bold text-emerald-400">
-                ₹87K+
-              </div>
-
-              <p className="mt-2 text-slate-400">
-                value conserved
-              </p>
-
-            </div>
-
-          </div>
-
+          <Link
+            to="/signup"
+            className="rf-primary-button"
+          >
+            Build with ReFeed
+            <ArrowRight size={17} />
+          </Link>
         </div>
+      </div>
+    </section>
+  );
+}
 
-      </section>
+/* =========================================================
+   FOOTER
+   ========================================================= */
 
-      {/* ================================================================
-          FOOTER
-      ================================================================ */}
-
-      <footer className="bg-slate-950 border-t border-slate-900 py-12">
-
-        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
-
+function Footer() {
+  return (
+    <footer className="rf-footer">
+      <div className="rf-section-container">
+        <div className="rf-footer-main">
           <Link
             to="/"
-            className="flex items-center gap-2"
+            className="rf-footer-brand"
           >
+            <div className="rf-footer-logo">
+              <img
+                src="/logo.png"
+                alt="ReFeed logo"
+              />
+            </div>
 
-            <Leaf className="w-5 h-5 text-emerald-500" />
-
-            <span className="text-xl font-bold tracking-tight">
-              Re
-              <span className="text-emerald-400">
-                Feed
+            <div>
+              <strong>ReFeed</strong>
+              <span>
+                Predict • Prepare • Serve • Rescue
               </span>
-            </span>
-
+            </div>
           </Link>
 
-          <div className="text-slate-500 text-sm text-center">
-            Built for Campus Canteen Food Waste
-            Forecaster & Donation Dispatcher (ML-03)
+          <div className="rf-footer-links">
+            <a href="#features">
+              Features
+            </a>
+
+            <a href="#workflow">
+              Workflow
+            </a>
+
+            <a href="#impact">
+              Impact
+            </a>
+
+            <Link to="/login">
+              Login
+            </Link>
           </div>
-
-          <a
-            href="https://github.com"
-            target="_blank"
-            rel="noreferrer"
-            className="text-slate-400 hover:text-emerald-400 transition-colors"
-            aria-label="GitHub"
-          >
-            <GitBranch className="w-5 h-5" />
-          </a>
-
         </div>
 
-      </footer>
+        <div className="rf-footer-bottom">
+          <span>
+            © {new Date().getFullYear()} ReFeed.
+            Built for smarter campus food systems.
+          </span>
 
-    </div>
+          <div className="rf-footer-tech">
+            <span>
+              <Leaf size={13} />
+              LESS WASTE
+            </span>
+
+            <span>
+              <HeartHandshake size={13} />
+              MORE IMPACT
+            </span>
+          </div>
+        </div>
+      </div>
+    </footer>
   );
-};
+}
 
-/*
-|--------------------------------------------------------------------------
-| Export with Error Boundary
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   MAIN LANDING PAGE
+   ========================================================= */
 
-export default function LandingPageWithErrorBoundary() {
+export default function LandingPage() {
   return (
-    <ErrorBoundary>
-      <LandingPage />
-    </ErrorBoundary>
+    <div className="rf-page">
+      <Navbar />
+
+      <main>
+        <Hero />
+        <Features />
+        <Workflow />
+        <Impact />
+        <CTA />
+      </main>
+
+      <Footer />
+    </div>
   );
 }

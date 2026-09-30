@@ -1,16 +1,25 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
+  ArrowRight,
+  BrainCircuit,
+  Check,
+  CheckCircle2,
   Eye,
   EyeOff,
+  Leaf,
   LockKeyhole,
   Mail,
-  ArrowRight,
-  Loader2,
-  Leaf,
+  Recycle,
+  Sparkles,
+  Users,
+  ChefHat,
+  TrendingDown,
+  Utensils,
 } from "lucide-react";
 
 import { loginUser } from "../firebase/auth";
+import "./Login.css";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -19,338 +28,601 @@ export default function Login() {
   const [password, setPassword] = useState("");
 
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+
   const [error, setError] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
+  const validateForm = () => {
+    let valid = true;
 
+    setEmailError("");
+    setPasswordError("");
     setError("");
 
-    // Basic validation
-    if (!email.trim()) {
-      setError("Please enter your email address.");
-      return;
+    const cleanEmail = email.trim();
+
+    if (!cleanEmail) {
+      setEmailError("Email address is required.");
+      valid = false;
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setEmailError("Please enter a valid email address.");
+      valid = false;
     }
 
     if (!password) {
-      setError("Please enter your password.");
-      return;
+      setPasswordError("Password is required.");
+      valid = false;
+    } else if (password.length < 6) {
+      setPasswordError("Password must contain at least 6 characters.");
+      valid = false;
     }
 
-    try {
-      setLoading(true);
+    return valid;
+  };
 
-      // Firebase login
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    if (loading || success) return;
+
+    if (!validateForm()) return;
+
+    setLoading(true);
+
+    try {
+      /*
+       * EXISTING AUTHENTICATION
+       * -----------------------
+       * Do not replace this.
+       */
       await loginUser(email.trim(), password);
 
-      // Login successful
-      navigate("/dashboard");
-    } catch (error) {
-      console.error("Login error:", error);
+      setSuccess(true);
 
-      switch (error.code) {
-        case "auth/invalid-credential":
-          setError("Invalid email or password.");
-          break;
+      setTimeout(() => {
+        navigate("/dashboard");
+      }, 700);
+    } catch (err) {
+      console.error("Login error:", err);
 
-        case "auth/user-not-found":
-          setError("No account was found with this email.");
-          break;
+      let message = "Unable to sign in. Please try again.";
 
-        case "auth/wrong-password":
-          setError("Incorrect password.");
-          break;
-
-        case "auth/invalid-email":
-          setError("Please enter a valid email address.");
-          break;
-
-        case "auth/user-disabled":
-          setError(
-            "This account has been disabled. Please contact support."
-          );
-          break;
-
-        case "auth/too-many-requests":
-          setError(
-            "Too many login attempts. Please try again later."
-          );
-          break;
-
-        case "auth/network-request-failed":
-          setError(
-            "Network error. Please check your internet connection."
-          );
-          break;
-
-        default:
-          setError("Unable to sign in. Please try again.");
+      if (err?.code === "auth/invalid-credential") {
+        message = "Incorrect email or password.";
+      } else if (err?.code === "auth/user-not-found") {
+        message = "No account was found with this email.";
+      } else if (err?.code === "auth/wrong-password") {
+        message = "Incorrect password.";
+      } else if (err?.code === "auth/too-many-requests") {
+        message =
+          "Too many unsuccessful attempts. Please try again later.";
+      } else if (err?.code === "auth/network-request-failed") {
+        message =
+          "Network error. Please check your internet connection.";
       }
-    } finally {
+
+      setError(message);
       setLoading(false);
     }
   };
 
+  const handleForgotPassword = () => {
+    setError(
+      "Password reset is not configured yet. Please contact the administrator."
+    );
+  };
+
+  const handleSocialLogin = (provider) => {
+    setError(`${provider} sign-in is not configured yet.`);
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-green-50 flex items-center justify-center px-4">
+    <main className="login-page">
+      {/* =====================================================
+          LEFT EXPERIENCE
+      ====================================================== */}
 
-      <div className="w-full max-w-md">
+      <section className="login-visual">
+        <div className="visual-glow visual-glow-1" />
+        <div className="visual-glow visual-glow-2" />
+        <div className="visual-glow visual-glow-3" />
 
-        {/* ============================= */}
-        {/* LOGO / BRAND */}
-        {/* ============================= */}
+        <div className="visual-grid" />
 
-        <div className="text-center mb-8">
-
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-600 text-white shadow-lg mb-4">
-            <Leaf size={32} />
-          </div>
-
-          <h1 className="text-3xl font-bold text-gray-900">
-            MealRescue
-          </h1>
-
-          <p className="text-gray-500 mt-2">
-            Predict. Prepare. Rescue.
-          </p>
-
-        </div>
-
-        {/* ============================= */}
-        {/* LOGIN CARD */}
-        {/* ============================= */}
-
-        <div className="bg-white rounded-3xl shadow-xl border border-gray-100 p-8">
-
-          {/* Heading */}
-
-          <div className="mb-7">
-
-            <h2 className="text-2xl font-bold text-gray-900">
-              Welcome back
-            </h2>
-
-            <p className="text-gray-500 mt-1">
-              Sign in to your MealRescue account
-            </p>
-
-          </div>
-
-          {/* ============================= */}
-          {/* ERROR MESSAGE */}
-          {/* ============================= */}
-
-          {error && (
-            <div
-              role="alert"
-              className="mb-5 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"
-            >
-              {error}
+        <div className="visual-inner">
+          {/* BRAND */}
+          <header className="visual-brand">
+            <div className="brand-logo">
+              <img src="/logo.png" alt="ReFeed logo" />
             </div>
-          )}
 
-          {/* ============================= */}
-          {/* LOGIN FORM */}
-          {/* ============================= */}
+            <div className="brand-text">
+              <strong>ReFeed</strong>
+              <span>Smart Food. Zero Waste.</span>
+            </div>
+          </header>
 
-          <form
-            onSubmit={handleLogin}
-            className="space-y-5"
-          >
+          {/* MAIN VISUAL AREA */}
+          <div className="visual-main">
+            {/* LEFT CONTENT */}
+            <div className="visual-copy">
+              <div className="ai-badge">
+                <span className="ai-badge-icon">
+                  <Sparkles size={14} />
+                </span>
 
-            {/* ============================= */}
-            {/* EMAIL */}
-            {/* ============================= */}
-
-            <div>
-
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-gray-700 mb-2"
-              >
-                Email address
-              </label>
-
-              <div className="relative">
-
-                <Mail
-                  size={20}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-                />
-
-                <input
-                  id="email"
-                  type="email"
-                  name="email"
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    setError("");
-                  }}
-                  placeholder="you@example.com"
-                  autoComplete="email"
-                  disabled={loading}
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3.5 pl-12 pr-4 text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:opacity-70"
-                />
-
+                <span>AI-POWERED FOOD MANAGEMENT</span>
               </div>
 
+              <h1>
+                Predict
+                <br />
+                <span>Wisely.</span>
+                <br />
+                Reduce
+                <br />
+                <span>Waste.</span>
+              </h1>
+
+              <p className="visual-description">
+                Transform meal demand into smarter preparation,
+                lower waste and meaningful food rescue.
+              </p>
+
+              {/* PROCESS */}
+              <div className="process-list">
+                <div className="process-step active">
+                  <div className="process-number">
+                    <BrainCircuit size={17} />
+                  </div>
+
+                  <div>
+                    <strong>Predict</strong>
+                    <span>AI meal demand forecasting</span>
+                  </div>
+                </div>
+
+                <div className="process-connector" />
+
+                <div className="process-step">
+                  <div className="process-number">
+                    <ChefHat size={17} />
+                  </div>
+
+                  <div>
+                    <strong>Prepare</strong>
+                    <span>Optimize meals & ingredients</span>
+                  </div>
+                </div>
+
+                <div className="process-connector" />
+
+                <div className="process-step">
+                  <div className="process-number">
+                    <Recycle size={17} />
+                  </div>
+
+                  <div>
+                    <strong>Rescue</strong>
+                    <span>Connect surplus with NGOs</span>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* ============================= */}
-            {/* PASSWORD */}
-            {/* ============================= */}
+            {/* ANALYTICS COLUMN */}
+            <div className="analytics-column">
+              {/* FORECAST CARD */}
+              <article className="analytics-card forecast-card">
+                <div className="analytics-card-top">
+                  <div className="analytics-icon analytics-blue">
+                    <BrainCircuit size={17} />
+                  </div>
+
+                  <div className="analytics-title">
+                    <span>AI FORECAST</span>
+                    <strong>Meal Demand</strong>
+                  </div>
+
+                  <div className="live-status">
+                    <span />
+                    Live
+                  </div>
+                </div>
+
+                <div className="chart-area">
+                  <div className="chart-bars">
+                    <i style={{ height: "35%" }} />
+                    <i style={{ height: "48%" }} />
+                    <i style={{ height: "42%" }} />
+                    <i style={{ height: "64%" }} />
+                    <i style={{ height: "55%" }} />
+                    <i style={{ height: "76%" }} />
+                    <i style={{ height: "68%" }} />
+                    <i style={{ height: "90%" }} />
+                  </div>
+                </div>
+
+                <div className="forecast-result">
+                  <span>Tomorrow</span>
+                  <strong>626 meals</strong>
+                </div>
+              </article>
+
+              {/* WASTE CARD */}
+              <article className="analytics-card waste-card">
+                <div className="analytics-icon analytics-green">
+                  <Leaf size={17} />
+                </div>
+
+                <div className="waste-content">
+                  <span>FOOD WASTE REDUCTION</span>
+                  <strong>40%</strong>
+
+                  <div className="waste-progress">
+                    <span />
+                  </div>
+                </div>
+
+                <TrendingDown
+                  size={17}
+                  className="waste-trend"
+                />
+              </article>
+
+              {/* NGO CARD */}
+              <article className="analytics-card ngo-card">
+                <div className="analytics-icon analytics-cyan">
+                  <Users size={17} />
+                </div>
+
+                <div className="ngo-content">
+                  <span>SURPLUS RESCUED</span>
+                  <strong>18 meals → NGO</strong>
+                  <small>Community Kitchen</small>
+                </div>
+
+                <CheckCircle2
+                  size={18}
+                  className="ngo-check"
+                />
+              </article>
+            </div>
+          </div>
+
+          {/* MISSION */}
+          <div className="mission-card">
+            <div className="mission-icon">
+              <Users size={19} />
+            </div>
+
+            <div className="mission-content">
+              <span>OUR MISSION</span>
+
+              <strong>
+                Good Food Should
+                <br />
+                Reach Everyone.
+              </strong>
+            </div>
+
+            <div className="mission-leaf">
+              <Leaf size={23} />
+            </div>
+          </div>
+
+          {/* FOOTER */}
+          <footer className="visual-footer">
+            <span className="footer-status">
+              <i />
+              Intelligent food management
+            </span>
+
+            <span>ReFeed © 2026</span>
+          </footer>
+        </div>
+      </section>
+
+      {/* =====================================================
+          RIGHT LOGIN AREA
+      ====================================================== */}
+
+      <section className="login-panel">
+        <div className="panel-glow panel-glow-1" />
+        <div className="panel-glow panel-glow-2" />
+
+        <div className="login-container">
+          {/* MOBILE BRAND */}
+          <div className="mobile-brand">
+            <div className="mobile-brand-logo">
+              <img src="/logo.png" alt="ReFeed" />
+            </div>
 
             <div>
+              <strong>ReFeed</strong>
+              <span>Smart Food. Zero Waste.</span>
+            </div>
+          </div>
 
-              <div className="flex items-center justify-between mb-2">
+          {/* LOGIN CARD */}
+          <div className="login-card">
+            <div className="login-heading">
+              <div className="login-leaf">
+                <Leaf size={18} />
+              </div>
 
-                <label
-                  htmlFor="password"
-                  className="text-sm font-medium text-gray-700"
+              <span className="login-eyebrow">
+                WELCOME TO REFEED
+              </span>
+
+              <h2>Welcome Back</h2>
+
+              <p>
+                Sign in to continue making an impact
+                <br className="desktop-break" />
+                with smarter food management.
+              </p>
+            </div>
+
+            {/* ERROR */}
+            {error && (
+              <div className="form-alert form-alert-error">
+                <span className="alert-icon">!</span>
+                <span>{error}</span>
+              </div>
+            )}
+
+            {/* SUCCESS */}
+            {success && (
+              <div className="form-alert form-alert-success">
+                <span className="success-icon">
+                  <Check size={14} />
+                </span>
+
+                <span>Login successful</span>
+              </div>
+            )}
+
+            <form
+              className="login-form"
+              onSubmit={handleSubmit}
+              noValidate
+            >
+              {/* EMAIL */}
+              <div className="field">
+                <label htmlFor="email">Email address</label>
+
+                <div
+                  className={`input-box ${
+                    emailError ? "has-error" : ""
+                  }`}
                 >
-                  Password
+                  <Mail
+                    size={18}
+                    className="field-icon"
+                  />
+
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    value={email}
+                    placeholder="Enter your email"
+                    autoComplete="email"
+                    disabled={loading || success}
+                    onChange={(event) => {
+                      setEmail(event.target.value);
+                      setEmailError("");
+                      setError("");
+                    }}
+                    aria-invalid={Boolean(emailError)}
+                  />
+
+                  {email && !emailError && (
+                    <CheckCircle2
+                      size={16}
+                      className="valid-icon"
+                    />
+                  )}
+                </div>
+
+                {emailError && (
+                  <span className="field-error">
+                    {emailError}
+                  </span>
+                )}
+              </div>
+
+              {/* PASSWORD */}
+              <div className="field">
+                <label htmlFor="password">Password</label>
+
+                <div
+                  className={`input-box ${
+                    passwordError ? "has-error" : ""
+                  }`}
+                >
+                  <LockKeyhole
+                    size={18}
+                    className="field-icon"
+                  />
+
+                  <input
+                    id="password"
+                    name="password"
+                    type={
+                      showPassword ? "text" : "password"
+                    }
+                    value={password}
+                    placeholder="Enter your password"
+                    autoComplete="current-password"
+                    disabled={loading || success}
+                    onChange={(event) => {
+                      setPassword(event.target.value);
+                      setPasswordError("");
+                      setError("");
+                    }}
+                    aria-invalid={Boolean(passwordError)}
+                  />
+
+                  <button
+                    type="button"
+                    className="eye-button"
+                    onClick={() =>
+                      setShowPassword(
+                        (previous) => !previous
+                      )
+                    }
+                    aria-label={
+                      showPassword
+                        ? "Hide password"
+                        : "Show password"
+                    }
+                    disabled={loading || success}
+                  >
+                    {showPassword ? (
+                      <EyeOff size={18} />
+                    ) : (
+                      <Eye size={18} />
+                    )}
+                  </button>
+                </div>
+
+                {passwordError && (
+                  <span className="field-error">
+                    {passwordError}
+                  </span>
+                )}
+              </div>
+
+              {/* OPTIONS */}
+              <div className="form-options">
+                <label className="remember">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    disabled={loading || success}
+                    onChange={(event) =>
+                      setRememberMe(
+                        event.target.checked
+                      )
+                    }
+                  />
+
+                  <span className="checkbox">
+                    <Check size={11} />
+                  </span>
+
+                  <span>Remember me</span>
                 </label>
 
                 <button
                   type="button"
-                  onClick={() => {
-                    setError("");
-                    alert(
-                      "Password reset will be added next."
-                    );
-                  }}
-                  className="text-sm font-medium text-emerald-600 hover:text-emerald-700"
+                  className="forgot"
+                  onClick={handleForgotPassword}
+                  disabled={loading || success}
                 >
                   Forgot password?
                 </button>
-
               </div>
 
-              <div className="relative">
+              {/* LOGIN BUTTON */}
+              <button
+                type="submit"
+                className={`submit-button ${
+                  loading ? "loading" : ""
+                } ${success ? "success" : ""}`}
+                disabled={loading || success}
+              >
+                {loading ? (
+                  <>
+                    <span className="spinner" />
+                    Signing in...
+                  </>
+                ) : success ? (
+                  <>
+                    <Check size={18} />
+                    Login successful
+                  </>
+                ) : (
+                  <>
+                    <span>Login</span>
 
-                <LockKeyhole
-                  size={20}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-                />
+                    <span className="submit-arrow">
+                      <ArrowRight size={18} />
+                    </span>
+                  </>
+                )}
+              </button>
+            </form>
 
-                <input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  name="password"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    setError("");
-                  }}
-                  placeholder="Enter your password"
-                  autoComplete="current-password"
-                  disabled={loading}
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3.5 pl-12 pr-12 text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:opacity-70"
-                />
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setShowPassword(!showPassword)
-                  }
-                  disabled={loading}
-                  aria-label={
-                    showPassword
-                      ? "Hide password"
-                      : "Show password"
-                  }
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 disabled:cursor-not-allowed"
-                >
-                  {showPassword ? (
-                    <EyeOff size={20} />
-                  ) : (
-                    <Eye size={20} />
-                  )}
-                </button>
-
-              </div>
-
+            {/* DIVIDER */}
+            <div className="divider">
+              <span />
+              <p>or continue with</p>
+              <span />
             </div>
 
-            {/* ============================= */}
-            {/* SIGN IN BUTTON */}
-            {/* ============================= */}
+            {/* SOCIAL LOGIN */}
+            <div className="social-grid">
+              <button
+                type="button"
+                className="social-button"
+                onClick={() =>
+                  handleSocialLogin("Google")
+                }
+              >
+                <span className="google-icon">G</span>
+                <span>Google</span>
+              </button>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3.5 font-semibold text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
-            >
+              <button
+                type="button"
+                className="social-button"
+                onClick={() =>
+                  handleSocialLogin("Microsoft")
+                }
+              >
+                <span className="microsoft-icon">
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                </span>
 
-              {loading ? (
-                <>
-                  <Loader2
-                    size={20}
-                    className="animate-spin"
-                  />
+                <span>Microsoft</span>
+              </button>
+            </div>
 
-                  Signing in...
-                </>
-              ) : (
-                <>
-                  Sign in
+            {/* SIGNUP */}
+            <div className="signup">
+              <span>Don't have an account?</span>
 
-                  <ArrowRight size={20} />
-                </>
-              )}
+              <Link to="/signup">
+                Sign Up
+                <ArrowRight size={14} />
+              </Link>
+            </div>
 
-            </button>
-
-          </form>
-
-          {/* ============================= */}
-          {/* SIGN UP */}
-          {/* ============================= */}
-
-          <div className="mt-7 text-center text-sm">
-
-            <span className="text-gray-500">
-              Don't have an account?{" "}
-            </span>
-
-            <Link
-              to="/signup"
-              className="font-semibold text-emerald-600 hover:text-emerald-700"
-            >
-              Create account
-            </Link>
-
+            {/* SECURITY */}
+            <div className="security-note">
+              <LockKeyhole size={12} />
+              <span>Your account is securely protected</span>
+            </div>
           </div>
 
-          {/* ============================= */}
-          {/* BACK TO HOME */}
-          {/* ============================= */}
-
-          <div className="mt-4 text-center">
-
-            <Link
-              to="/"
-              className="text-sm text-gray-400 hover:text-emerald-600"
-            >
-              ← Back to home
-            </Link>
-
+          <div className="panel-footer">
+            <span>ReFeed</span>
+            <i />
+            <span>Predict • Reduce • Rescue</span>
           </div>
-
         </div>
-
-        {/* ============================= */}
-        {/* FOOTER */}
-        {/* ============================= */}
-
-        <p className="text-center text-xs text-gray-400 mt-6">
-          © 2026 MealRescue • Campus Food Waste Prevention
-        </p>
-
-      </div>
-
-    </div>
+      </section>
+    </main>
   );
 }
