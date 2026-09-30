@@ -1,351 +1,1685 @@
+import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, ChefHat, CheckCircle2, Package, Utensils } from "lucide-react";
-import { useState } from "react";
+
+import {
+  ArrowLeft,
+  ArrowRight,
+  BrainCircuit,
+  Check,
+  CheckCircle2,
+  ChefHat,
+  CloudRain,
+  Database,
+  Leaf,
+  Package,
+  RefreshCw,
+  Sparkles,
+  Thermometer,
+  Utensils,
+  Users,
+  Zap,
+} from "lucide-react";
+
+import "./Preparation.css";
+
+
+/* =========================================================
+   HELPERS
+   ========================================================= */
+
+const formatNumber = (value) => {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return "0";
+  }
+
+  return number.toLocaleString("en-IN");
+};
+
+const formatQuantity = (value) => {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return "0.00";
+  }
+
+  return number.toFixed(2);
+};
+
+const formatDate = (date) => {
+  if (!date) {
+    return "";
+  }
+
+  const parsed = new Date(`${date}T00:00:00`);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return date;
+  }
+
+  return parsed.toLocaleDateString("en-IN", {
+    weekday: "long",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+};
+
+
+/* =========================================================
+   PREPARATION PAGE
+   ========================================================= */
 
 export default function Preparation() {
   const navigate = useNavigate();
+
   const location = useLocation();
 
-  const [checkedItems, setCheckedItems] = useState({});
 
-  // Forecast data can be passed from Forecast page through React Router state.
-  const forecast = location.state?.forecast || null;
+  /* =======================================================
+     FORECAST DATA
+     ======================================================= */
 
-  // Demo fallback values.
-  // These are used if the Preparation page is opened directly.
-  const predictedMeals = forecast?.predicted_meals ?? 596;
-  const recommendedCooking = forecast?.recommended_cooking ?? 626;
+  const forecast =
+    location.state?.forecast || null;
 
-  const ingredients = forecast?.ingredients || {
-    Rice: 48.36,
-    Dal: 19.34,
-    Vegetables: 64.48,
-    Oil: 6.45,
-    Flour: 12.9,
-    Spices: 3.22,
-  };
 
-  const mealType = forecast?.meal_type || "Lunch";
-  const forecastDate = forecast?.date || new Date().toISOString().split("T")[0];
+  /*
+   * Keep the existing fallback values so the page still
+   * works when opened directly.
+   */
 
-  const ingredientEntries = Object.entries(ingredients);
+  const predictedMeals =
+    forecast?.predicted_meals ?? 596;
+
+  const recommendedCooking =
+    forecast?.recommended_cooking ?? 626;
+
+  const ingredients =
+    forecast?.ingredients || {
+      Rice: 48.36,
+      Dal: 19.34,
+      Vegetables: 64.48,
+      Oil: 6.45,
+      Flour: 12.9,
+      Spices: 3.22,
+    };
+
+  const mealType =
+    forecast?.meal_type || "Lunch";
+
+  const forecastDate =
+    forecast?.date ||
+    new Date()
+      .toISOString()
+      .split("T")[0];
+
+  const weather =
+    forecast?.weather || null;
+
+  const historicalRecords =
+    forecast?.historicalRecords ??
+    forecast?.historical_records ??
+    0;
+
+
+  /* =======================================================
+     INGREDIENTS
+     ======================================================= */
+
+  const ingredientEntries =
+    Object.entries(ingredients);
+
+
+  /* =======================================================
+     CHECKLIST STATE
+     ======================================================= */
+
+  const [checkedItems, setCheckedItems] =
+    useState({});
+
 
   const toggleItem = (ingredient) => {
     setCheckedItems((previous) => ({
       ...previous,
-      [ingredient]: !previous[ingredient],
+      [ingredient]:
+        !previous[ingredient],
     }));
   };
 
-  const completedCount = ingredientEntries.filter(
-    ([ingredient]) => checkedItems[ingredient]
-  ).length;
+
+  /* =======================================================
+     PROGRESS
+     ======================================================= */
+
+  const completedCount =
+    ingredientEntries.filter(
+      ([ingredient]) =>
+        checkedItems[ingredient]
+    ).length;
+
 
   const progress =
     ingredientEntries.length > 0
-      ? Math.round((completedCount / ingredientEntries.length) * 100)
+      ? Math.round(
+          (completedCount /
+            ingredientEntries.length) *
+            100
+        )
       : 0;
 
+
+  /* =======================================================
+     TOTAL INGREDIENT WEIGHT
+     ======================================================= */
+
+  const totalIngredientWeight =
+    useMemo(() => {
+      return ingredientEntries.reduce(
+        (total, [, quantity]) =>
+          total + Number(quantity || 0),
+        0
+      );
+    }, [ingredientEntries]);
+
+
+  /* =======================================================
+     STATUS
+     ======================================================= */
+
+  const preparationStatus =
+    progress === 100
+      ? "READY FOR SERVICE"
+      : progress >= 50
+      ? "PREPARATION IN PROGRESS"
+      : progress > 0
+      ? "KITCHEN ACTIVE"
+      : "READY TO START";
+
+
+  /* =======================================================
+     NAVIGATION
+     ======================================================= */
+
+  const goToMealOperations = () => {
+    navigate("/meal-operations", {
+      state: {
+        forecast: {
+          ...(forecast || {}),
+
+          predicted_meals:
+            predictedMeals,
+
+          recommended_cooking:
+            recommendedCooking,
+
+          ingredients,
+
+          meal_type:
+            mealType,
+
+          date:
+            forecastDate,
+        },
+      },
+    });
+  };
+
+
+  const resetChecklist = () => {
+    setCheckedItems({});
+  };
+
+
+  /* =======================================================
+     RENDER
+     ======================================================= */
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      {/* Header */}
-      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <div>
+    <div className="preparation-page">
+
+
+      {/* ===================================================
+          AMBIENT BACKGROUND
+          =================================================== */}
+
+      <div className="prep-background">
+
+        <div className="prep-grid" />
+
+        <div className="prep-glow prep-glow-one" />
+
+        <div className="prep-glow prep-glow-two" />
+
+        <div className="prep-particle prep-particle-one" />
+
+        <div className="prep-particle prep-particle-two" />
+
+        <div className="prep-particle prep-particle-three" />
+
+        <div className="prep-particle prep-particle-four" />
+
+      </div>
+
+
+      {/* ===================================================
+          HEADER
+          =================================================== */}
+
+      <header className="prep-header">
+
+        <div className="prep-header-inner">
+
+
+          {/* LEFT */}
+
+          <div className="prep-header-left">
+
             <button
-              onClick={() => navigate("/dashboard")}
-              className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900"
+              className="prep-back-button"
+              onClick={() =>
+                navigate("/forecast")
+              }
             >
-              <ArrowLeft size={17} />
-              Back to Dashboard
+
+              <ArrowLeft
+                size={16}
+              />
+
+              <span>
+                Back to Forecast
+              </span>
+
             </button>
 
-            <h1 className="text-2xl font-bold tracking-tight">
-              Preparation Plan
-            </h1>
 
-            <p className="mt-1 text-sm text-slate-500">
-              Convert your demand forecast into a practical cooking plan.
-            </p>
-          </div>
+            <div className="prep-brand">
 
-          <div className="hidden items-center gap-3 rounded-xl bg-emerald-50 px-4 py-3 sm:flex">
-            <ChefHat className="text-emerald-600" size={22} />
+              <div className="prep-brand-icon">
 
-            <div>
-              <p className="text-xs font-medium text-emerald-600">
-                Preparation Status
-              </p>
+                <ChefHat
+                  size={19}
+                />
 
-              <p className="font-semibold text-emerald-900">
-                {progress}% Complete
-              </p>
+              </div>
+
+              <div>
+
+                <strong>
+                  ReFeed
+                </strong>
+
+                <span>
+                  Kitchen Intelligence
+                </span>
+
+              </div>
+
             </div>
+
           </div>
+
+
+          {/* RIGHT */}
+
+          <div className="prep-header-right">
+
+            <div className="prep-live-status">
+
+              <span />
+
+              AI OPERATIONS ONLINE
+
+            </div>
+
+
+            <button
+              className="prep-reset-button"
+              onClick={resetChecklist}
+            >
+
+              <RefreshCw
+                size={13}
+              />
+
+              Reset
+
+            </button>
+
+          </div>
+
         </div>
+
       </header>
 
-      <main className="mx-auto max-w-7xl px-6 py-8">
-        {/* Top summary */}
-        <section className="grid gap-5 md:grid-cols-3">
-          <SummaryCard
-            icon={<Utensils size={22} />}
-            label="Meal Type"
-            value={mealType}
-            description={forecastDate}
-          />
 
-          <SummaryCard
-            icon={<Package size={22} />}
-            label="Predicted Demand"
-            value={`${predictedMeals} meals`}
-            description="AI forecast"
-          />
+      {/* ===================================================
+          MAIN
+          =================================================== */}
 
-          <SummaryCard
-            icon={<ChefHat size={22} />}
-            label="Recommended Cooking"
-            value={`${recommendedCooking} meals`}
-            description="Includes 5% safety buffer"
-          />
-        </section>
+      <main className="prep-main">
 
-        {/* Main content */}
-        <section className="mt-8 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
-          {/* Ingredient table */}
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-200 px-6 py-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-bold">
-                    Ingredient Requirements
-                  </h2>
 
-                  <p className="mt-1 text-sm text-slate-500">
-                    Estimated quantity required for the recommended cooking
-                    count.
-                  </p>
-                </div>
+        {/* =================================================
+            TOP HERO
+            ================================================= */}
 
-                <div className="rounded-lg bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700">
-                  {recommendedCooking} meals
-                </div>
-              </div>
+        <section className="prep-hero">
+
+
+          {/* HERO CONTENT */}
+
+          <div className="prep-hero-content">
+
+            <div className="prep-eyebrow">
+
+              <span />
+
+              STEP 03 · PREPARATION
+
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-left">
-                    <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Ingredient
-                    </th>
 
-                    <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Required
-                    </th>
+            <h1>
 
-                    <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Status
-                    </th>
-                  </tr>
-                </thead>
+              Turn the forecast
+              <br />
 
-                <tbody>
-                  {ingredientEntries.map(([ingredient, quantity]) => {
-                    const completed = checkedItems[ingredient];
+              into a{" "}
+              <em>
+                kitchen plan.
+              </em>
 
-                    return (
-                      <tr
-                        key={ingredient}
-                        className="border-b border-slate-100 last:border-0"
-                      >
-                        <td className="px-6 py-4">
-                          <p className="font-semibold text-slate-800">
-                            {ingredient}
-                          </p>
+            </h1>
 
-                          <p className="mt-1 text-xs text-slate-400">
-                            Kitchen requirement
-                          </p>
-                        </td>
 
-                        <td className="px-6 py-4">
-                          <span className="text-lg font-bold text-slate-900">
-                            {quantity}
-                          </span>
-
-                          <span className="ml-1 text-sm text-slate-500">
-                            kg
-                          </span>
-                        </td>
-
-                        <td className="px-6 py-4">
-                          <button
-                            onClick={() => toggleItem(ingredient)}
-                            className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                              completed
-                                ? "bg-emerald-100 text-emerald-700"
-                                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                            }`}
-                          >
-                            <CheckCircle2 size={17} />
-
-                            {completed ? "Ready" : "Mark Ready"}
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Preparation checklist */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-bold">
-              Kitchen Preparation
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Track ingredient preparation before serving begins.
+            <p>
+              ReFeed has converted the AI demand
+              prediction into precise cooking quantities.
+              Prepare the ingredients, confirm readiness,
+              then move directly into meal operations.
             </p>
 
-            <div className="mt-6">
-              <div className="mb-2 flex items-center justify-between text-sm">
-                <span className="font-medium text-slate-700">
-                  Progress
-                </span>
 
-                <span className="font-semibold text-emerald-600">
-                  {completedCount}/{ingredientEntries.length}
-                </span>
-              </div>
+            <div className="prep-hero-tags">
 
-              <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                <div
-                  className="h-full rounded-full bg-emerald-500 transition-all duration-300"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
+              <HeroTag
+                icon={
+                  <Users size={13} />
+                }
+                label="Demand"
+                value={`${formatNumber(
+                  predictedMeals
+                )} meals`}
+              />
+
+              <HeroTag
+                icon={
+                  <ChefHat size={13} />
+                }
+                label="Cooking"
+                value={`${formatNumber(
+                  recommendedCooking
+                )} meals`}
+              />
+
+              <HeroTag
+                icon={
+                  <Package size={13} />
+                }
+                label="Ingredients"
+                value={`${ingredientEntries.length} items`}
+              />
+
             </div>
 
-            <div className="mt-6 space-y-3">
-              {ingredientEntries.map(([ingredient]) => {
-                const completed = checkedItems[ingredient];
-
-                return (
-                  <button
-                    key={ingredient}
-                    onClick={() => toggleItem(ingredient)}
-                    className={`flex w-full items-center justify-between rounded-xl border p-4 text-left transition ${
-                      completed
-                        ? "border-emerald-200 bg-emerald-50"
-                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`flex h-9 w-9 items-center justify-center rounded-lg ${
-                          completed
-                            ? "bg-emerald-100 text-emerald-600"
-                            : "bg-slate-100 text-slate-500"
-                        }`}
-                      >
-                        <CheckCircle2 size={19} />
-                      </div>
-
-                      <div>
-                        <p className="font-semibold text-slate-800">
-                          {ingredient}
-                        </p>
-
-                        <p className="text-xs text-slate-500">
-                          {ingredients[ingredient]} kg required
-                        </p>
-                      </div>
-                    </div>
-
-                    <span
-                      className={`text-xs font-semibold ${
-                        completed
-                          ? "text-emerald-600"
-                          : "text-slate-400"
-                      }`}
-                    >
-                      {completed ? "READY" : "PENDING"}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
           </div>
+
+
+          {/* 3D CORE */}
+
+          <div className="prep-hero-visual">
+
+            <div className="prep-orbit prep-orbit-one" />
+
+            <div className="prep-orbit prep-orbit-two" />
+
+            <div className="prep-orbit prep-orbit-three" />
+
+
+            <div className="prep-core-shadow" />
+
+
+            <div className="prep-ai-core">
+
+              <div className="prep-core-inner">
+
+                <BrainCircuit
+                  size={39}
+                />
+
+              </div>
+
+              <span>
+                AI
+              </span>
+
+              <strong>
+                KITCHEN
+              </strong>
+
+            </div>
+
+
+            <FloatingIngredient
+              className="prep-float-rice"
+              name="RICE"
+              quantity={
+                ingredients.Rice
+                  ? `${formatQuantity(
+                      ingredients.Rice
+                    )} kg`
+                  : "READY"
+              }
+              icon={
+                <Leaf size={14} />
+              }
+            />
+
+
+            <FloatingIngredient
+              className="prep-float-dal"
+              name="DAL"
+              quantity={
+                ingredients.Dal
+                  ? `${formatQuantity(
+                      ingredients.Dal
+                    )} kg`
+                  : "READY"
+              }
+              icon={
+                <Package size={14} />
+              }
+            />
+
+
+            <FloatingIngredient
+              className="prep-float-veg"
+              name="VEGETABLES"
+              quantity={
+                ingredients.Vegetables
+                  ? `${formatQuantity(
+                      ingredients.Vegetables
+                    )} kg`
+                  : "READY"
+              }
+              icon={
+                <Utensils size={14} />
+              }
+            />
+
+          </div>
+
         </section>
 
-        {/* Flow */}
-        <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600">
-                ReFeed Workflow
-              </p>
 
-              <h2 className="mt-1 text-xl font-bold">
-                Predict → Prepare → Serve → Rescue → Measure
-              </h2>
+        {/* =================================================
+            OPERATION PIPELINE
+            ================================================= */}
 
-              <p className="mt-2 max-w-2xl text-sm text-slate-500">
-                Your demand forecast is now converted into an actionable
-                kitchen preparation plan.
-              </p>
+        <section className="prep-pipeline">
+
+          <PipelineNode
+            number="01"
+            title="Forecast"
+            status="DONE"
+            completed
+            icon={
+              <BrainCircuit
+                size={15}
+              />
+            }
+          />
+
+          <PipelineConnector active />
+
+          <PipelineNode
+            number="02"
+            title="Preparation"
+            status="ACTIVE"
+            active
+            icon={
+              <ChefHat
+                size={15}
+              />
+            }
+          />
+
+          <PipelineConnector />
+
+          <PipelineNode
+            number="03"
+            title="Meal Operations"
+            status="NEXT"
+            icon={
+              <Utensils
+                size={15}
+              />
+            }
+          />
+
+          <PipelineConnector />
+
+          <PipelineNode
+            number="04"
+            title="Food Rescue"
+            status="LATER"
+            icon={
+              <Leaf
+                size={15}
+              />
+            }
+          />
+
+          <PipelineConnector />
+
+          <PipelineNode
+            number="05"
+            title="Impact"
+            status="LATER"
+            icon={
+              <Zap
+                size={15}
+              />
+            }
+          />
+
+        </section>
+
+
+        {/* =================================================
+            SUMMARY CARDS
+            ================================================= */}
+
+        <section className="prep-summary-grid">
+
+          <SummaryCard
+            icon={
+              <Utensils
+                size={18}
+              />
+            }
+            label="MEAL SERVICE"
+            value={mealType}
+            description={formatDate(
+              forecastDate
+            )}
+          />
+
+          <SummaryCard
+            icon={
+              <Users
+                size={18}
+              />
+            }
+            label="PREDICTED DEMAND"
+            value={`${formatNumber(
+              predictedMeals
+            )}`}
+            description="Meals expected"
+          />
+
+          <SummaryCard
+            icon={
+              <ChefHat
+                size={18}
+              />
+            }
+            label="COOKING TARGET"
+            value={`${formatNumber(
+              recommendedCooking
+            )}`}
+            description="Includes 5% safety buffer"
+            highlighted
+          />
+
+          <SummaryCard
+            icon={
+              <Package
+                size={18}
+              />
+            }
+            label="TOTAL INGREDIENTS"
+            value={`${formatQuantity(
+              totalIngredientWeight
+            )} kg`}
+            description={`${ingredientEntries.length} ingredient types`}
+          />
+
+        </section>
+
+
+        {/* =================================================
+            MAIN WORKSPACE
+            ================================================= */}
+
+        <section className="prep-workspace">
+
+
+          {/* =================================================
+              INGREDIENT COMMAND TABLE
+              ================================================= */}
+
+          <div className="prep-card ingredient-command-card">
+
+            <CardHeading
+              eyebrow="KITCHEN INVENTORY"
+              title="Ingredient requirements"
+              description="Confirm each ingredient as it becomes ready for preparation."
+              icon={
+                <Package
+                  size={17}
+                />
+              }
+            />
+
+
+            <div className="ingredient-table-header">
+
+              <span>
+                INGREDIENT
+              </span>
+
+              <span>
+                REQUIRED
+              </span>
+
+              <span>
+                STATUS
+              </span>
+
+              <span>
+                ACTION
+              </span>
+
             </div>
+
+
+            <div className="ingredient-list">
+
+              {ingredientEntries.map(
+                ([ingredient, quantity], index) => {
+
+                  const completed =
+                    Boolean(
+                      checkedItems[
+                        ingredient
+                      ]
+                    );
+
+                  return (
+                    <IngredientRow
+                      key={ingredient}
+                      index={index}
+                      ingredient={
+                        ingredient
+                      }
+                      quantity={
+                        quantity
+                      }
+                      completed={
+                        completed
+                      }
+                      onToggle={() =>
+                        toggleItem(
+                          ingredient
+                        )
+                      }
+                    />
+                  );
+                }
+              )}
+
+            </div>
+
+
+            {/* TABLE FOOTER */}
+
+            <div className="ingredient-footer">
+
+              <div>
+
+                <div className="footer-status-icon">
+
+                  <CheckCircle2
+                    size={15}
+                  />
+
+                </div>
+
+                <div>
+
+                  <span>
+                    KITCHEN CHECK
+                  </span>
+
+                  <strong>
+                    {completedCount} of{" "}
+                    {ingredientEntries.length}{" "}
+                    ingredients ready
+                  </strong>
+
+                </div>
+
+              </div>
+
+
+              <span className="footer-percentage">
+                {progress}%
+              </span>
+
+            </div>
+
+          </div>
+
+
+          {/* =================================================
+              PREPARATION CONTROL
+              ================================================= */}
+
+          <div className="prep-card control-card">
+
+            <CardHeading
+              eyebrow="PREPARATION CONTROL"
+              title="Kitchen readiness"
+              description="Track the preparation state before service."
+              icon={
+                <GaugeIcon />
+              }
+            />
+
+
+            {/* PROGRESS RING */}
+
+            <div className="prep-progress-area">
+
+              <ProgressRing
+                progress={progress}
+              />
+
+              <div className="progress-copy">
+
+                <span>
+                  CURRENT STATUS
+                </span>
+
+                <h3>
+                  {preparationStatus}
+                </h3>
+
+                <p>
+                  {progress === 100
+                    ? "All ingredient requirements have been confirmed. The kitchen is ready for meal operations."
+                    : `${ingredientEntries.length - completedCount} ingredient${
+                        ingredientEntries.length -
+                          completedCount ===
+                        1
+                          ? ""
+                          : "s"
+                      } still require${
+                        ingredientEntries.length -
+                          completedCount ===
+                        1
+                          ? "s"
+                          : ""
+                      } preparation.`}
+                </p>
+
+              </div>
+
+            </div>
+
+
+            {/* PROGRESS BAR */}
+
+            <div className="large-progress">
+
+              <div className="large-progress-label">
+
+                <span>
+                  PREPARATION PROGRESS
+                </span>
+
+                <strong>
+                  {completedCount}/
+                  {
+                    ingredientEntries.length
+                  }
+                </strong>
+
+              </div>
+
+              <div className="large-progress-track">
+
+                <div
+                  className="large-progress-fill"
+                  style={{
+                    width: `${progress}%`,
+                  }}
+                >
+
+                  <span />
+
+                </div>
+
+              </div>
+
+            </div>
+
+
+            {/* QUICK CHECKS */}
+
+            <div className="quick-checks">
+
+              <QuickCheck
+                icon={
+                  <Check
+                    size={12}
+                  />
+                }
+                title="Demand verified"
+                description={`${formatNumber(
+                  predictedMeals
+                )} meals predicted`}
+              />
+
+              <QuickCheck
+                icon={
+                  <Check
+                    size={12}
+                  />
+                }
+                title="Cooking target"
+                description={`${formatNumber(
+                  recommendedCooking
+                )} meals`}
+              />
+
+              <QuickCheck
+                icon={
+                  <Check
+                    size={12}
+                  />
+                }
+                title="Safety buffer"
+                description="5% included"
+              />
+
+            </div>
+
+
+            {/* NEXT ACTION */}
+
+            <div className="prep-next-action">
+
+              <div className="next-action-glow" />
+
+              <div className="next-action-content">
+
+                <div className="next-action-icon">
+
+                  <Utensils
+                    size={19}
+                  />
+
+                </div>
+
+                <div>
+
+                  <span>
+                    NEXT OPERATION
+                  </span>
+
+                  <strong>
+                    Meal Operations
+                  </strong>
+
+                  <p>
+                    Record cooked and served meals
+                    after preparation is complete.
+                  </p>
+
+                </div>
+
+              </div>
+
+
+              <button
+                className="continue-operation-button"
+                onClick={
+                  goToMealOperations
+                }
+              >
+
+                Continue to Meal Operations
+
+                <ArrowRight
+                  size={16}
+                />
+
+              </button>
+
+            </div>
+
+          </div>
+
+        </section>
+
+
+        {/* =================================================
+            INTELLIGENCE STRIP
+            ================================================= */}
+
+        <section className="prep-intelligence">
+
+          <div className="intelligence-title">
+
+            <div className="intelligence-icon">
+
+              <Sparkles
+                size={16}
+              />
+
+            </div>
+
+            <div>
+
+              <span>
+                AI PREPARATION INTELLIGENCE
+              </span>
+
+              <strong>
+                Why this plan?
+              </strong>
+
+            </div>
+
+          </div>
+
+
+          <IntelligenceMetric
+            label="Predicted demand"
+            value={`${formatNumber(
+              predictedMeals
+            )} meals`}
+            icon={
+              <Users size={14} />
+            }
+          />
+
+          <IntelligenceMetric
+            label="Cooking buffer"
+            value="+5%"
+            icon={
+              <ChefHat size={14} />
+            }
+          />
+
+          <IntelligenceMetric
+            label="Ingredient load"
+            value={`${formatQuantity(
+              totalIngredientWeight
+            )} kg`}
+            icon={
+              <Package size={14} />
+            }
+          />
+
+          <IntelligenceMetric
+            label="Historical records"
+            value={
+              historicalRecords
+                ? formatNumber(
+                    historicalRecords
+                  )
+                : "Available"
+            }
+            icon={
+              <Database size={14} />
+            }
+          />
+
+        </section>
+
+
+        {/* =================================================
+            WEATHER / CONTEXT
+            ================================================= */}
+
+        <section className="prep-context-grid">
+
+          <div className="prep-context-card">
+
+            <div className="context-card-icon">
+
+              <CloudRain
+                size={17}
+              />
+
+            </div>
+
+            <div>
+
+              <span>
+                WEATHER CONTEXT
+              </span>
+
+              <strong>
+                {weather?.temperature != null
+                  ? `${Number(
+                      weather.temperature
+                    ).toFixed(0)}°C`
+                  : "Forecast context"}
+              </strong>
+
+              <p>
+                {weather
+                  ? `${Number(
+                      weather.rainfallMm || 0
+                    ).toFixed(1)} mm rainfall · ${
+                      weather.description ||
+                      "Weather signal supplied"
+                    }`
+                  : "Weather context was supplied to the forecast engine."}
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <div className="prep-context-card">
+
+            <div className="context-card-icon">
+
+              <Thermometer
+                size={17}
+              />
+
+            </div>
+
+            <div>
+
+              <span>
+                SERVICE CONTEXT
+              </span>
+
+              <strong>
+                {mealType} Service
+              </strong>
+
+              <p>
+                {formatDate(
+                  forecastDate
+                )}
+              </p>
+
+            </div>
+
+          </div>
+
+        </section>
+
+
+        {/* =================================================
+            WORKFLOW FOOTER
+            ================================================= */}
+
+        <section className="prep-workflow-footer">
+
+          <div className="workflow-footer-copy">
+
+            <div className="workflow-footer-eyebrow">
+
+              <span />
+
+              REFEED OPERATIONS
+
+            </div>
+
+            <h2>
+              Predict → Prepare → Serve → Rescue
+            </h2>
+
+            <p>
+              Preparation is the bridge between
+              AI demand intelligence and real-world
+              food service operations.
+            </p>
+
+          </div>
+
+
+          <div className="workflow-footer-actions">
 
             <button
-              onClick={() => navigate("/forecast")}
-              className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              className="view-forecast-button"
+              onClick={() =>
+                navigate("/forecast")
+              }
             >
+
+              <ArrowLeft
+                size={14}
+              />
+
               View Forecast
+
             </button>
+
+
+            <button
+              className="footer-next-button"
+              onClick={
+                goToMealOperations
+              }
+            >
+
+              Meal Operations
+
+              <ArrowRight
+                size={15}
+              />
+
+            </button>
+
           </div>
+
         </section>
 
-        {/* Continue button */}
-        <section className="mt-6 flex justify-end">
-          <button
-            onClick={() => navigate("/meal-operations")}
-            className="rounded-xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
-          >
-            Continue to Meal Operations →
-          </button>
-        </section>
       </main>
+
     </div>
   );
 }
 
-function SummaryCard({ icon, label, value, description }) {
+
+/* =========================================================
+   COMPONENTS
+   ========================================================= */
+
+function HeroTag({
+  icon,
+  label,
+  value,
+}) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-center gap-3">
-        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+    <div className="prep-hero-tag">
+
+      <div className="hero-tag-icon">
+        {icon}
+      </div>
+
+      <div>
+
+        <span>
+          {label}
+        </span>
+
+        <strong>
+          {value}
+        </strong>
+
+      </div>
+
+    </div>
+  );
+}
+
+
+function FloatingIngredient({
+  className,
+  name,
+  quantity,
+  icon,
+}) {
+  return (
+    <div
+      className={`prep-floating-card ${className}`}
+    >
+
+      <div className="floating-icon">
+        {icon}
+      </div>
+
+      <div>
+
+        <span>
+          {name}
+        </span>
+
+        <strong>
+          {quantity}
+        </strong>
+
+      </div>
+
+    </div>
+  );
+}
+
+
+function PipelineNode({
+  number,
+  title,
+  status,
+  icon,
+  completed = false,
+  active = false,
+}) {
+  return (
+    <div
+      className={`pipeline-node ${
+        completed
+          ? "completed"
+          : ""
+      } ${
+        active
+          ? "active"
+          : ""
+      }`}
+    >
+
+      <div className="pipeline-node-icon">
+
+        {completed ? (
+          <Check
+            size={14}
+          />
+        ) : (
+          icon
+        )}
+
+      </div>
+
+      <div>
+
+        <span>
+          {number}
+        </span>
+
+        <strong>
+          {title}
+        </strong>
+
+        <small>
+          {status}
+        </small>
+
+      </div>
+
+    </div>
+  );
+}
+
+
+function PipelineConnector({
+  active = false,
+}) {
+  return (
+    <div
+      className={`pipeline-connector ${
+        active
+          ? "active"
+          : ""
+      }`}
+    />
+  );
+}
+
+
+function SummaryCard({
+  icon,
+  label,
+  value,
+  description,
+  highlighted = false,
+}) {
+  return (
+    <div
+      className={`prep-summary-card ${
+        highlighted
+          ? "highlighted"
+          : ""
+      }`}
+    >
+
+      <div className="summary-card-top">
+
+        <div className="summary-card-icon">
           {icon}
         </div>
 
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-            {label}
-          </p>
+        <span>
+          {label}
+        </span>
 
-          <p className="mt-1 text-xl font-bold text-slate-900">
-            {value}
-          </p>
-
-          <p className="mt-1 text-xs text-slate-500">
-            {description}
-          </p>
-        </div>
       </div>
+
+      <strong>
+        {value}
+      </strong>
+
+      <small>
+        {description}
+      </small>
+
     </div>
+  );
+}
+
+
+function CardHeading({
+  eyebrow,
+  title,
+  description,
+  icon,
+}) {
+  return (
+    <div className="prep-card-heading">
+
+      <div className="card-heading-icon">
+        {icon}
+      </div>
+
+      <div>
+
+        <span>
+          {eyebrow}
+        </span>
+
+        <h2>
+          {title}
+        </h2>
+
+        <p>
+          {description}
+        </p>
+
+      </div>
+
+    </div>
+  );
+}
+
+
+function IngredientRow({
+  ingredient,
+  quantity,
+  completed,
+  onToggle,
+  index,
+}) {
+  return (
+    <div
+      className={`ingredient-row ${
+        completed
+          ? "completed"
+          : ""
+      }`}
+    >
+
+      <div className="ingredient-name">
+
+        <div className="ingredient-number">
+          {String(
+            index + 1
+          ).padStart(2, "0")}
+        </div>
+
+        <div className="ingredient-symbol">
+          <Utensils
+            size={14}
+          />
+        </div>
+
+        <div>
+
+          <strong>
+            {ingredient}
+          </strong>
+
+          <span>
+            Kitchen requirement
+          </span>
+
+        </div>
+
+      </div>
+
+
+      <div className="ingredient-quantity">
+
+        <strong>
+          {formatQuantity(
+            quantity
+          )}
+        </strong>
+
+        <span>
+          kg
+        </span>
+
+      </div>
+
+
+      <div className="ingredient-status">
+
+        <span
+          className={
+            completed
+              ? "status-ready"
+              : "status-pending"
+          }
+        >
+
+          <span />
+
+          {completed
+            ? "READY"
+            : "PENDING"}
+
+        </span>
+
+      </div>
+
+
+      <button
+        className={`ingredient-action ${
+          completed
+            ? "ready"
+            : ""
+        }`}
+        onClick={onToggle}
+      >
+
+        {completed ? (
+          <>
+            <Check
+              size={13}
+            />
+
+            Ready
+          </>
+        ) : (
+          <>
+            <CheckCircle2
+              size={13}
+            />
+
+            Mark Ready
+          </>
+        )}
+
+      </button>
+
+    </div>
+  );
+}
+
+
+function ProgressRing({
+  progress,
+}) {
+  const radius = 52;
+
+  const circumference =
+    2 *
+    Math.PI *
+    radius;
+
+  const offset =
+    circumference -
+    (progress / 100) *
+      circumference;
+
+  return (
+    <div className="progress-ring-wrapper">
+
+      <svg
+        className="progress-ring"
+        width="140"
+        height="140"
+        viewBox="0 0 140 140"
+      >
+
+        <circle
+          className="progress-ring-bg"
+          cx="70"
+          cy="70"
+          r={radius}
+        />
+
+        <circle
+          className="progress-ring-value"
+          cx="70"
+          cy="70"
+          r={radius}
+          strokeDasharray={
+            circumference
+          }
+          strokeDashoffset={
+            offset
+          }
+        />
+
+      </svg>
+
+
+      <div className="progress-ring-content">
+
+        <strong>
+          {progress}
+          <span>
+            %
+          </span>
+        </strong>
+
+        <small>
+          READY
+        </small>
+
+      </div>
+
+    </div>
+  );
+}
+
+
+function QuickCheck({
+  icon,
+  title,
+  description,
+}) {
+  return (
+    <div className="quick-check">
+
+      <div className="quick-check-icon">
+        {icon}
+      </div>
+
+      <div>
+
+        <strong>
+          {title}
+        </strong>
+
+        <span>
+          {description}
+        </span>
+
+      </div>
+
+    </div>
+  );
+}
+
+
+function IntelligenceMetric({
+  icon,
+  label,
+  value,
+}) {
+  return (
+    <div className="intelligence-metric">
+
+      <div className="intelligence-metric-icon">
+        {icon}
+      </div>
+
+      <div>
+
+        <span>
+          {label}
+        </span>
+
+        <strong>
+          {value}
+        </strong>
+
+      </div>
+
+    </div>
+  );
+}
+
+
+function GaugeIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+
+      <path
+        d="M4.93 19.07a10 10 0 1 1 14.14 0"
+      />
+
+      <path
+        d="M12 12l4-4"
+      />
+
+      <path
+        d="M12 22v-2"
+      />
+
+    </svg>
   );
 }

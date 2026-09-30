@@ -5,17 +5,21 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
+  Check,
   CheckCircle2,
   Clock3,
   HeartHandshake,
+  Leaf,
   MapPin,
   PackageCheck,
   Phone,
   RefreshCw,
   Send,
   ShieldCheck,
+  Sparkles,
   Truck,
   Users,
+  Zap,
 } from "lucide-react";
 
 import {
@@ -28,6 +32,11 @@ import {
 import { createDonation } from "../services/donationService";
 
 import "./FoodRescue.css";
+
+
+/* =========================================================
+   DEMO NGO DATA
+   ========================================================= */
 
 const DEMO_NGOS = [
   {
@@ -59,11 +68,21 @@ const DEMO_NGOS = [
   },
 ];
 
+
+/* =========================================================
+   MAIN PAGE
+   ========================================================= */
+
 export default function FoodRescue() {
   const location = useLocation();
   const navigate = useNavigate();
 
   const rescueData = location.state || {};
+
+
+  /* =======================================================
+     INPUT DATA
+     ======================================================= */
 
   const date =
     rescueData.date ||
@@ -117,6 +136,11 @@ export default function FoodRescue() {
         120
     ) || 120;
 
+
+  /* =======================================================
+     CALCULATE SURPLUS
+     ======================================================= */
+
   const remainingMeals = useMemo(
     () =>
       calculateRemainingMeals({
@@ -128,6 +152,11 @@ export default function FoodRescue() {
 
   const surplusDetected =
     isSurplus(remainingMeals);
+
+
+  /* =======================================================
+     STATE
+     ======================================================= */
 
   const [selectedNgo, setSelectedNgo] =
     useState(null);
@@ -149,6 +178,50 @@ export default function FoodRescue() {
 
   const [successMessage, setSuccessMessage] =
     useState("");
+
+
+  /* =======================================================
+     DERIVED DATA
+     ======================================================= */
+
+  const rescueProgress =
+    donation
+      ? 100
+      : selectedNgo
+      ? 75
+      : surplusEvent
+      ? 50
+      : surplusDetected
+      ? 25
+      : 0;
+
+  const formattedShelfLife =
+    shelfLifeMinutes >= 60
+      ? `${Math.floor(
+          shelfLifeMinutes / 60
+        )} hour${
+          Math.floor(
+            shelfLifeMinutes / 60
+          ) !== 1
+            ? "s"
+            : ""
+        }${
+          shelfLifeMinutes % 60
+            ? ` ${shelfLifeMinutes % 60} min`
+            : ""
+        }`
+      : `${shelfLifeMinutes} min`;
+
+  const selectedNgoCanHandle =
+    selectedNgo
+      ? remainingMeals <=
+        Number(selectedNgo.capacity || 0)
+      : false;
+
+
+  /* =======================================================
+     CREATE SURPLUS EVENT
+     ======================================================= */
 
   const handleCreateSurplus = async () => {
     setError("");
@@ -175,15 +248,18 @@ export default function FoodRescue() {
 
           predictedMeals,
 
-          prepared: preparedMeals,
+          prepared:
+            preparedMeals,
 
-          served: servedMeals,
+          served:
+            servedMeals,
 
           dayType,
 
           campusPopulation,
 
-          location: pickupLocation,
+          location:
+            pickupLocation,
 
           shelfLifeMinutes,
         });
@@ -193,6 +269,7 @@ export default function FoodRescue() {
           result?.message ||
             "No qualifying surplus was detected."
         );
+
         return;
       }
 
@@ -216,6 +293,33 @@ export default function FoodRescue() {
     }
   };
 
+
+  /* =======================================================
+     SELECT NGO
+     ======================================================= */
+
+  const handleSelectNgo = (ngo) => {
+    if (
+      remainingMeals >
+      Number(ngo.capacity || 0)
+    ) {
+      setError(
+        `${ngo.name} can handle ${ngo.capacity} meals, but ${remainingMeals} meals are available.`
+      );
+
+      return;
+    }
+
+    setError("");
+    setSuccessMessage("");
+    setSelectedNgo(ngo);
+  };
+
+
+  /* =======================================================
+     SEND DONATION
+     ======================================================= */
+
   const handleSendNotification = async () => {
     setError("");
     setSuccessMessage("");
@@ -224,6 +328,7 @@ export default function FoodRescue() {
       setError(
         "Create the surplus event before notifying an NGO."
       );
+
       return;
     }
 
@@ -231,6 +336,7 @@ export default function FoodRescue() {
       setError(
         "Please select an NGO for pickup."
       );
+
       return;
     }
 
@@ -241,6 +347,7 @@ export default function FoodRescue() {
       setError(
         `${selectedNgo.name} can currently handle ${selectedNgo.capacity} meals, but ${remainingMeals} meals are available.`
       );
+
       return;
     }
 
@@ -267,15 +374,16 @@ export default function FoodRescue() {
 
           pickupLocation,
 
-          shelfLife: `${Math.round(
-            shelfLifeMinutes / 60
-          )} hours`,
+          shelfLife:
+            formattedShelfLife,
 
           shelfLifeMinutes,
 
-          ngo: selectedNgo,
+          ngo:
+            selectedNgo,
 
-          status: "Pickup Pending",
+          status:
+            "Pickup Pending",
 
           notes:
             "Surplus generated from campus canteen meal operations.",
@@ -289,22 +397,31 @@ export default function FoodRescue() {
 
       navigate("/donations", {
         state: {
-          donationId: result.id,
+          donationId:
+            result.id,
+
           surplusEventId:
             surplusEvent.id,
 
           date,
+
           mealType,
+
           predictedMeals,
+
           preparedMeals,
+
           servedMeals,
+
           surplusMeals:
             remainingMeals,
 
           pickupLocation,
+
           shelfLifeMinutes,
 
-          ngo: selectedNgo,
+          ngo:
+            selectedNgo,
         },
       });
     } catch (err) {
@@ -322,74 +439,183 @@ export default function FoodRescue() {
     }
   };
 
+
+  /* =======================================================
+     BACK
+     ======================================================= */
+
   const handleBack = () => {
-    navigate("/meal-operations", {
-      state: {
-        date,
-        mealType,
-        predictedMeals,
-        cookedMeals: preparedMeals,
-        servedMeals,
-        dayType,
-        campusPopulation,
-      },
-    });
+    navigate(
+      "/meal-operations",
+      {
+        state: {
+          date,
+          mealType,
+          predictedMeals,
+          cookedMeals:
+            preparedMeals,
+          servedMeals,
+          dayType,
+          campusPopulation,
+        },
+      }
+    );
   };
+
+
+  /* =======================================================
+     IMPACT
+     ======================================================= */
+
+  const estimatedPeopleHelped =
+    remainingMeals;
+
+  const estimatedWeight =
+    (remainingMeals * 0.35).toFixed(1);
+
+  const estimatedCo2 =
+    (remainingMeals * 0.45).toFixed(1);
+
+
+  /* =======================================================
+     RENDER
+     ======================================================= */
 
   return (
     <div className="food-rescue-page">
-      {/* Header */}
+
+      {/* =================================================
+          BACKGROUND
+          ================================================= */}
+
+      <div className="rescue-bg">
+
+        <div className="rescue-grid-bg" />
+
+        <div className="rescue-glow rescue-glow-one" />
+
+        <div className="rescue-glow rescue-glow-two" />
+
+        <div className="rescue-glow rescue-glow-three" />
+
+        <span className="rescue-particle p1" />
+        <span className="rescue-particle p2" />
+        <span className="rescue-particle p3" />
+        <span className="rescue-particle p4" />
+        <span className="rescue-particle p5" />
+
+      </div>
+
+
+      {/* =================================================
+          HEADER
+          ================================================= */}
+
       <header className="food-rescue-header">
+
         <div className="food-rescue-header-inner">
+
           <button
             className="food-rescue-back"
             onClick={handleBack}
           >
             <ArrowLeft size={16} />
-            Meal Operations
+
+            <span>
+              Meal Operations
+            </span>
           </button>
 
+
           <div className="food-rescue-title">
+
             <div className="food-rescue-title-icon">
-              <HeartHandshake size={21} />
+
+              <HeartHandshake
+                size={21}
+              />
+
             </div>
 
             <div>
+
               <h1>
                 Food Rescue
               </h1>
 
               <p>
-                Convert surplus meals into
-                community donations.
+                Community rescue command center
               </p>
+
             </div>
+
           </div>
+
+
+          <div className="rescue-live-indicator">
+
+            <span />
+
+            RESCUE NETWORK ONLINE
+
+          </div>
+
         </div>
+
       </header>
 
+
       <main className="food-rescue-container">
-        {/* Error */}
+
+
+        {/* =================================================
+            ALERTS
+            ================================================= */}
+
         {error && (
           <div className="food-rescue-alert error">
-            <AlertCircle size={18} />
+
+            <div className="alert-icon">
+              <AlertCircle
+                size={18}
+              />
+            </div>
 
             <div>
+
               <strong>
                 Action required
               </strong>
 
-              <p>{error}</p>
+              <p>
+                {error}
+              </p>
+
             </div>
+
+            <button
+              onClick={() =>
+                setError("")
+              }
+            >
+              ×
+            </button>
+
           </div>
         )}
 
-        {/* Success */}
+
         {successMessage && (
           <div className="food-rescue-alert success">
-            <CheckCircle2 size={18} />
+
+            <div className="alert-icon">
+              <CheckCircle2
+                size={18}
+              />
+            </div>
 
             <div>
+
               <strong>
                 Rescue workflow updated
               </strong>
@@ -397,142 +623,464 @@ export default function FoodRescue() {
               <p>
                 {successMessage}
               </p>
+
             </div>
+
           </div>
         )}
 
-        {/* Hero */}
-        <section className="food-rescue-hero">
-          <div>
-            <span>
-              SURPLUS FOOD DETECTION
-            </span>
+
+        {/* =================================================
+            HERO
+            ================================================= */}
+
+        <section className="rescue-hero">
+
+          <div className="rescue-hero-copy">
+
+            <div className="rescue-eyebrow">
+
+              <span />
+
+              STEP 04 · FOOD RESCUE
+
+            </div>
+
 
             <h2>
-              Rescue meals before
-              they become waste.
+              Rescue food.
+              <br />
+              <em>Restore impact.</em>
             </h2>
 
+
             <p>
-              Identify unused meals, find
-              a suitable NGO, and create a
-              traceable pickup request.
+              ReFeed has detected unused meals.
+              Convert the surplus into a traceable
+              community donation before its shelf
+              life expires.
             </p>
+
+
+            <div className="rescue-hero-actions">
+
+              <div className="hero-status-pill">
+
+                <HeartHandshake
+                  size={14}
+                />
+
+                {surplusDetected
+                  ? "Surplus detected"
+                  : "Monitoring surplus"}
+
+              </div>
+
+              <div className="hero-status-pill">
+
+                <Clock3
+                  size={14}
+                />
+
+                {formattedShelfLife}
+                {" "}
+                shelf life
+
+              </div>
+
+            </div>
+
           </div>
 
-          <div className="food-rescue-hero-stat">
+
+          {/* =================================================
+              3D RESCUE CORE
+              ================================================= */}
+
+          <div className="rescue-hero-visual">
+
+            <div className="rescue-orbit orbit-a" />
+
+            <div className="rescue-orbit orbit-b" />
+
+            <div className="rescue-orbit orbit-c" />
+
+
+            <div className="rescue-core-shadow" />
+
+
+            <div className="rescue-core">
+
+              <div className="rescue-core-ring">
+
+                <HeartHandshake
+                  size={39}
+                />
+
+              </div>
+
+              <span>
+                RESCUE
+              </span>
+
+              <strong>
+                {remainingMeals}
+              </strong>
+
+              <small>
+                MEALS
+              </small>
+
+            </div>
+
+
+            <div className="floating-rescue-card card-food">
+
+              <Leaf size={14} />
+
+              <div>
+
+                <span>
+                  FOOD SAVED
+                </span>
+
+                <strong>
+                  {estimatedWeight} kg
+                </strong>
+
+              </div>
+
+            </div>
+
+
+            <div className="floating-rescue-card card-ngo">
+
+              <Users size={14} />
+
+              <div>
+
+                <span>
+                  NGO NETWORK
+                </span>
+
+                <strong>
+                  {DEMO_NGOS.length} nearby
+                </strong>
+
+              </div>
+
+            </div>
+
+
+            <div className="floating-rescue-card card-impact">
+
+              <Zap size={14} />
+
+              <div>
+
+                <span>
+                  CO₂ AVOIDED
+                </span>
+
+                <strong>
+                  {estimatedCo2} kg
+                </strong>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </section>
+
+
+        {/* =================================================
+            WORKFLOW
+            ================================================= */}
+
+        <section className="rescue-flow">
+
+          <FlowStep
+            number="01"
+            title="Detect"
+            active
+            done
+          />
+
+          <FlowLine active />
+
+          <FlowStep
+            number="02"
+            title="Record"
+            active={
+              Boolean(
+                surplusEvent
+              )
+            }
+            done={
+              Boolean(
+                surplusEvent
+              )
+            }
+          />
+
+          <FlowLine
+            active={
+              Boolean(
+                surplusEvent
+              )
+            }
+          />
+
+          <FlowStep
+            number="03"
+            title="Select NGO"
+            active={
+              Boolean(
+                selectedNgo
+              )
+            }
+            done={
+              Boolean(
+                selectedNgo
+              )
+            }
+          />
+
+          <FlowLine
+            active={
+              Boolean(
+                selectedNgo
+              )
+            }
+          />
+
+          <FlowStep
+            number="04"
+            title="Pickup"
+            active={
+              Boolean(
+                donation
+              )
+            }
+            done={
+              Boolean(
+                donation
+              )
+            }
+          />
+
+          <FlowLine
+            active={
+              Boolean(
+                donation
+              )
+            }
+          />
+
+          <FlowStep
+            number="05"
+            title="Impact"
+            active={
+              Boolean(
+                donation
+              )
+            }
+          />
+
+        </section>
+
+
+        {/* =================================================
+            SURPLUS STATUS
+            ================================================= */}
+
+        <section
+          className={`surplus-status ${
+            surplusDetected
+              ? "active"
+              : "inactive"
+          }`}
+        >
+
+          <div className="surplus-status-main">
+
+            <div className="surplus-status-icon">
+
+              {surplusDetected ? (
+                <HeartHandshake
+                  size={25}
+                />
+              ) : (
+                <ShieldCheck
+                  size={25}
+                />
+              )}
+
+            </div>
+
+
+            <div>
+
+              <span>
+                SURPLUS DETECTION
+              </span>
+
+              <h3>
+                {surplusDetected
+                  ? `${remainingMeals} meals are ready for rescue`
+                  : "No qualifying surplus detected"}
+              </h3>
+
+              <p>
+                {surplusDetected
+                  ? `Remaining meals are above the ${SURPLUS_THRESHOLD}-meal rescue threshold.`
+                  : `Rescue activates when more than ${SURPLUS_THRESHOLD} meals remain.`}
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <div className="surplus-status-number">
+
             <strong>
               {remainingMeals}
             </strong>
 
             <span>
-              meals available
+              meals
             </span>
+
           </div>
+
         </section>
 
-        {/* Operation summary */}
+
+        {/* =================================================
+            MAIN GRID
+            ================================================= */}
+
         <section className="food-rescue-grid">
+
+
+          {/* =================================================
+              LEFT
+              ================================================= */}
+
           <div className="food-rescue-main">
-            <div className="food-rescue-card">
-              <div className="food-rescue-card-heading">
-                <div>
-                  <span>
-                    STEP 01
-                  </span>
 
-                  <h3>
-                    Surplus verification
-                  </h3>
-                </div>
 
-                <PackageCheck
-                  size={19}
-                />
-              </div>
+            {/* ---------------------------------------------
+                STEP 01
+                --------------------------------------------- */}
 
-              <div className="food-rescue-operation-grid">
-                <InfoItem
-                  label="Meal Date"
+            <div className="rescue-card">
+
+              <CardHeader
+                step="01"
+                title="Verify surplus"
+                description="Confirm the operational numbers before creating the rescue event."
+                icon={
+                  <PackageCheck
+                    size={18}
+                  />
+                }
+              />
+
+
+              <div className="operation-metrics">
+
+                <OperationMetric
+                  label="Meal date"
                   value={date}
                 />
 
-                <InfoItem
-                  label="Meal Type"
+                <OperationMetric
+                  label="Meal type"
                   value={mealType}
                 />
 
-                <InfoItem
+                <OperationMetric
                   label="Predicted"
                   value={`${predictedMeals} meals`}
                 />
 
-                <InfoItem
+                <OperationMetric
                   label="Prepared"
                   value={`${preparedMeals} meals`}
                 />
 
-                <InfoItem
+                <OperationMetric
                   label="Served"
                   value={`${servedMeals} meals`}
                 />
 
-                <InfoItem
+                <OperationMetric
                   label="Remaining"
                   value={`${remainingMeals} meals`}
                   highlight
                 />
+
               </div>
 
+
               <div
-                className={`surplus-detection ${
+                className={`detection-panel ${
                   surplusDetected
                     ? "detected"
                     : "not-detected"
                 }`}
               >
-                {surplusDetected ? (
-                  <>
+
+                <div className="detection-icon">
+
+                  {surplusDetected ? (
                     <CheckCircle2
                       size={21}
                     />
-
-                    <div>
-                      <strong>
-                        Surplus detected
-                      </strong>
-
-                      <p>
-                        {remainingMeals} meals
-                        remain, exceeding the
-                        {` ${SURPLUS_THRESHOLD}-meal `}
-                        rescue threshold.
-                      </p>
-                    </div>
-                  </>
-                ) : (
-                  <>
+                  ) : (
                     <AlertCircle
                       size={21}
                     />
+                  )}
 
-                    <div>
-                      <strong>
-                        No qualifying surplus
-                      </strong>
+                </div>
 
-                      <p>
-                        At least{" "}
-                        {SURPLUS_THRESHOLD +
-                          1}{" "}
-                        meals must remain
-                        before a rescue event
-                        can be created.
-                      </p>
-                    </div>
-                  </>
-                )}
+
+                <div className="detection-copy">
+
+                  <strong>
+
+                    {surplusDetected
+                      ? "Surplus detected"
+                      : "No qualifying surplus"}
+
+                  </strong>
+
+                  <p>
+
+                    {surplusDetected
+                      ? `${remainingMeals} meals remain and can be redirected to a nearby community partner.`
+                      : `At least ${SURPLUS_THRESHOLD + 1} meals must remain before a rescue event can be created.`}
+
+                  </p>
+
+                </div>
+
+
+                <div className="detection-badge">
+
+                  {surplusDetected
+                    ? "RESCUE READY"
+                    : "MONITORING"}
+
+                </div>
+
               </div>
+
 
               {!surplusEvent && (
                 <button
@@ -545,32 +1093,47 @@ export default function FoodRescue() {
                     !surplusDetected
                   }
                 >
+
                   {creatingSurplus ? (
                     <>
                       <RefreshCw
                         size={16}
                         className="spin"
                       />
-                      Creating event...
+
+                      Creating rescue event...
                     </>
                   ) : (
                     <>
                       <PackageCheck
                         size={16}
                       />
+
                       Create Surplus Event
+
+                      <ArrowRight
+                        size={15}
+                      />
                     </>
                   )}
+
                 </button>
               )}
 
+
               {surplusEvent && (
                 <div className="event-created">
-                  <CheckCircle2
-                    size={18}
-                  />
+
+                  <div className="event-created-icon">
+
+                    <CheckCircle2
+                      size={17}
+                    />
+
+                  </div>
 
                   <div>
+
                     <strong>
                       Surplus event created
                     </strong>
@@ -579,251 +1142,398 @@ export default function FoodRescue() {
                       Event ID:{" "}
                       {surplusEvent.id}
                     </span>
+
                   </div>
+
+                  <Check
+                    size={17}
+                  />
+
                 </div>
               )}
+
             </div>
 
-            {/* NGO selection */}
-            <div className="food-rescue-card">
-              <div className="food-rescue-card-heading">
-                <div>
-                  <span>
-                    STEP 02
-                  </span>
 
-                  <h3>
-                    Select NGO for pickup
-                  </h3>
-                </div>
+            {/* ---------------------------------------------
+                STEP 02
+                --------------------------------------------- */}
 
-                <Users size={19} />
-              </div>
+            <div className="rescue-card">
+
+              <CardHeader
+                step="02"
+                title="Find the right NGO"
+                description="Choose a nearby community partner with enough capacity for the available meals."
+                icon={
+                  <Users
+                    size={18}
+                  />
+                }
+              />
+
 
               {!surplusEvent ? (
-                <div className="locked-section">
-                  <ShieldCheck size={22} />
-
-                  <p>
-                    Create the surplus event
-                    first to enable NGO
-                    selection.
-                  </p>
-                </div>
+                <LockedState
+                  icon={
+                    <ShieldCheck
+                      size={23}
+                    />
+                  }
+                  title="NGO selection locked"
+                  text="Create the surplus event first to activate the rescue network."
+                />
               ) : (
-                <div className="ngo-list">
-                  {DEMO_NGOS.map((ngo) => {
-                    const canHandle =
-                      remainingMeals <=
-                      Number(
-                        ngo.capacity || 0
-                      );
+                <div className="ngo-grid">
 
-                    const selected =
-                      selectedNgo?.id ===
-                      ngo.id;
+                  {DEMO_NGOS.map(
+                    (ngo, index) => {
 
-                    return (
-                      <button
-                        key={ngo.id}
-                        type="button"
-                        className={`ngo-option ${
-                          selected
-                            ? "selected"
-                            : ""
-                        } ${
-                          !canHandle
-                            ? "capacity-warning"
-                            : ""
-                        }`}
-                        onClick={() =>
-                          canHandle &&
-                          setSelectedNgo(
-                            ngo
-                          )
-                        }
-                        disabled={!canHandle}
-                      >
-                        <div className="ngo-option-icon">
-                          <HeartHandshake
-                            size={19}
-                          />
-                        </div>
+                      const canHandle =
+                        remainingMeals <=
+                        Number(
+                          ngo.capacity || 0
+                        );
 
-                        <div className="ngo-option-content">
-                          <strong>
-                            {ngo.name}
-                          </strong>
+                      const selected =
+                        selectedNgo?.id ===
+                        ngo.id;
 
-                          <div className="ngo-option-meta">
+                      return (
+                        <button
+                          key={ngo.id}
+                          type="button"
+                          className={`ngo-option ${
+                            selected
+                              ? "selected"
+                              : ""
+                          } ${
+                            !canHandle
+                              ? "disabled"
+                              : ""
+                          }`}
+                          onClick={() =>
+                            canHandle &&
+                            handleSelectNgo(
+                              ngo
+                            )
+                          }
+                          disabled={
+                            !canHandle
+                          }
+                        >
+
+                          <div className="ngo-option-top">
+
+                            <div className="ngo-avatar">
+
+                              <HeartHandshake
+                                size={18}
+                              />
+
+                            </div>
+
+                            <div className="ngo-name">
+
+                              <strong>
+                                {ngo.name}
+                              </strong>
+
+                              <span>
+                                Community partner
+                              </span>
+
+                            </div>
+
+                            <div
+                              className={`ngo-radio ${
+                                selected
+                                  ? "checked"
+                                  : ""
+                              }`}
+                            >
+
+                              {selected && (
+                                <Check
+                                  size={12}
+                                />
+                              )}
+
+                            </div>
+
+                          </div>
+
+
+                          <div className="ngo-meta">
+
                             <span>
+
                               <MapPin
                                 size={12}
                               />
+
                               {ngo.distance}
+
                             </span>
 
                             <span>
+
                               <PackageCheck
                                 size={12}
                               />
-                              Capacity{" "}
-                              {
-                                ngo.capacity
-                              }
+
+                              {ngo.capacity} meals
+
                             </span>
 
                             <span>
+
                               <Clock3
                                 size={12}
                               />
-                              {
-                                ngo.responseTime
-                              }
+
+                              {ngo.responseTime}
+
                             </span>
+
                           </div>
 
-                          {!canHandle && (
-                            <small>
-                              Insufficient
-                              capacity for
-                              this donation
-                            </small>
-                          )}
-                        </div>
 
-                        {selected && (
-                          <CheckCircle2
-                            className="ngo-selected-icon"
-                            size={20}
-                          />
-                        )}
-                      </button>
-                    );
-                  })}
+                          <div className="ngo-capacity">
+
+                            <div>
+
+                              <span>
+                                CAPACITY
+                              </span>
+
+                              <strong>
+                                {ngo.capacity} meals
+                              </strong>
+
+                            </div>
+
+                            <span
+                              className={
+                                canHandle
+                                  ? "capacity-ok"
+                                  : "capacity-bad"
+                              }
+                            >
+
+                              {canHandle
+                                ? "Available"
+                                : "Insufficient"}
+
+                            </span>
+
+                          </div>
+
+
+                          {selected && (
+                            <div className="ngo-selected-banner">
+
+                              <CheckCircle2
+                                size={13}
+                              />
+
+                              NGO selected for pickup
+
+                            </div>
+                          )}
+
+                        </button>
+                      );
+                    }
+                  )}
+
                 </div>
               )}
+
             </div>
 
-            {/* Pickup */}
-            <div className="food-rescue-card">
-              <div className="food-rescue-card-heading">
-                <div>
-                  <span>
-                    STEP 03
-                  </span>
 
-                  <h3>
-                    Pickup information
-                  </h3>
-                </div>
+            {/* ---------------------------------------------
+                STEP 03
+                --------------------------------------------- */}
 
-                <Truck size={19} />
-              </div>
+            <div className="rescue-card">
 
-              <div className="pickup-info-grid">
-                <InfoItem
-                  label="Pickup Location"
-                  value={pickupLocation}
+              <CardHeader
+                step="03"
+                title="Pickup intelligence"
+                description="Everything the pickup partner needs before arriving at the canteen."
+                icon={
+                  <Truck
+                    size={18}
+                  />
+                }
+              />
+
+
+              <div className="pickup-grid">
+
+                <PickupItem
                   icon={
-                    <MapPin size={15} />
+                    <MapPin
+                      size={15}
+                    />
+                  }
+                  label="Pickup location"
+                  value={
+                    pickupLocation
                   }
                 />
 
-                <InfoItem
-                  label="Shelf Life"
-                  value={`${Math.round(
-                    shelfLifeMinutes /
-                      60
-                  )} hours`}
+                <PickupItem
                   icon={
-                    <Clock3 size={15} />
+                    <Clock3
+                      size={15}
+                    />
+                  }
+                  label="Shelf life"
+                  value={
+                    formattedShelfLife
                   }
                 />
 
-                <InfoItem
-                  label="Available Meals"
-                  value={`${remainingMeals} meals`}
+                <PickupItem
                   icon={
                     <PackageCheck
                       size={15}
                     />
                   }
+                  label="Available meals"
+                  value={`${remainingMeals} meals`}
                 />
 
-                <InfoItem
+                <PickupItem
+                  icon={
+                    <Users
+                      size={15}
+                    />
+                  }
                   label="Selected NGO"
                   value={
                     selectedNgo?.name ||
                     "Not selected"
                   }
-                  icon={
-                    <Users size={15} />
-                  }
                 />
+
               </div>
+
+
+              <div className="pickup-alert">
+
+                <div>
+
+                  <Clock3
+                    size={15}
+                  />
+
+                </div>
+
+                <p>
+                  Food rescue is time-sensitive.
+                  The selected NGO should collect
+                  the meals within the displayed
+                  shelf-life window.
+                </p>
+
+              </div>
+
             </div>
 
-            {/* Notification */}
-            <div className="food-rescue-card">
-              <div className="food-rescue-card-heading">
-                <div>
-                  <span>
-                    STEP 04
-                  </span>
 
-                  <h3>
-                    Send pickup notification
-                  </h3>
-                </div>
+            {/* ---------------------------------------------
+                STEP 04
+                --------------------------------------------- */}
 
-                <Send size={19} />
-              </div>
+            <div className="rescue-card">
+
+              <CardHeader
+                step="04"
+                title="Send pickup notification"
+                description="Create the donation request and move the rescue into tracking."
+                icon={
+                  <Send
+                    size={18}
+                  />
+                }
+              />
+
 
               {!selectedNgo ? (
-                <div className="locked-section">
-                  <Send size={22} />
-
-                  <p>
-                    Select an eligible NGO
-                    before sending the
-                    pickup notification.
-                  </p>
-                </div>
+                <LockedState
+                  icon={
+                    <Send
+                      size={22}
+                    />
+                  }
+                  title="Waiting for NGO selection"
+                  text="Select an eligible NGO above to prepare the pickup notification."
+                />
               ) : (
                 <div className="notification-preview">
-                  <div className="notification-icon">
-                    <Send size={19} />
+
+                  <div className="notification-preview-icon">
+
+                    <Send
+                      size={19}
+                    />
+
                   </div>
 
-                  <div className="notification-content">
+
+                  <div className="notification-preview-content">
+
+                    <span>
+                      PICKUP REQUEST READY
+                    </span>
+
                     <strong>
-                      Ready to notify{" "}
+                      Notify{" "}
                       {selectedNgo.name}
                     </strong>
 
                     <p>
                       {remainingMeals} meals
-                      are ready for pickup at{" "}
+                      are available at{" "}
                       {pickupLocation}.
-                      Expected response:{" "}
+                      Estimated NGO response:{" "}
                       {
                         selectedNgo.responseTime
                       }.
                     </p>
 
-                    <div className="notification-contact">
-                      <Phone size={13} />
-                      {
-                        selectedNgo.phone
-                      }
+
+                    <div className="notification-phone">
+
+                      <Phone
+                        size={13}
+                      />
+
+                      {selectedNgo.phone}
+
                     </div>
+
                   </div>
+
+
+                  <div className="notification-ready">
+
+                    <span />
+
+                    READY
+
+                  </div>
+
                 </div>
               )}
 
+
               <button
-                className="primary-rescue-button send-button"
+                className="primary-rescue-button notification-button"
                 onClick={
                   handleSendNotification
                 }
@@ -831,53 +1541,108 @@ export default function FoodRescue() {
                   sendingDonation ||
                   !surplusEvent ||
                   !selectedNgo ||
-                  Boolean(donation)
+                  Boolean(donation) ||
+                  !selectedNgoCanHandle
                 }
               >
+
                 {sendingDonation ? (
                   <>
                     <RefreshCw
                       size={16}
                       className="spin"
                     />
-                    Sending notification...
+
+                    Creating donation request...
                   </>
                 ) : donation ? (
                   <>
                     <CheckCircle2
                       size={16}
                     />
-                    Notification Sent
+
+                    Pickup Request Created
+
+                    <ArrowRight
+                      size={15}
+                    />
                   </>
                 ) : (
                   <>
-                    <Send size={16} />
+                    <Send
+                      size={16}
+                    />
+
                     Send Pickup Notification
+
                     <ArrowRight
                       size={15}
                     />
                   </>
                 )}
+
               </button>
+
             </div>
+
           </div>
 
-          {/* Sidebar */}
+
+          {/* =================================================
+              RIGHT SIDEBAR
+              ================================================= */}
+
           <aside className="food-rescue-sidebar">
-            <div className="rescue-summary-card">
-              <span>
+
+
+            {/* ---------------------------------------------
                 RESCUE SUMMARY
-              </span>
+                --------------------------------------------- */}
 
-              <strong>
+            <div className="rescue-summary-card">
+
+              <div className="summary-card-top">
+
+                <div>
+
+                  <span>
+                    LIVE RESCUE
+                  </span>
+
+                  <h3>
+                    Rescue summary
+                  </h3>
+
+                </div>
+
+                <div className="summary-live-dot">
+
+                  <span />
+
+                </div>
+
+              </div>
+
+
+              <div className="summary-big-number">
+
                 {remainingMeals}
-              </strong>
 
-              <small>
-                surplus meals
-              </small>
+                <small>
+                  meals
+                </small>
+
+              </div>
+
+
+              <p>
+                potential food diverted
+                from waste
+              </p>
+
 
               <div className="summary-divider" />
+
 
               <SummaryRow
                 label="Threshold"
@@ -886,156 +1651,657 @@ export default function FoodRescue() {
 
               <SummaryRow
                 label="Prepared"
-                value={preparedMeals}
+                value={
+                  preparedMeals
+                }
               />
 
               <SummaryRow
                 label="Served"
-                value={servedMeals}
+                value={
+                  servedMeals
+                }
+              />
+
+              <SummaryRow
+                label="Remaining"
+                value={
+                  remainingMeals
+                }
               />
 
               <SummaryRow
                 label="Status"
                 value={
-                  surplusEvent
+                  donation
+                    ? "Pickup Requested"
+                    : surplusEvent
                     ? "Event Created"
                     : surplusDetected
-                      ? "Ready"
-                      : "No Surplus"
+                    ? "Ready"
+                    : "No Surplus"
+                }
+                highlight={
+                  surplusDetected
                 }
               />
+
             </div>
 
-            <div className="rescue-workflow-card">
-              <span>
-                RESCUE WORKFLOW
-              </span>
 
-              <WorkflowStep
-                number="01"
-                title="Detect"
-                active
-                done={surplusDetected}
-              />
+            {/* ---------------------------------------------
+                PROGRESS
+                --------------------------------------------- */}
 
-              <WorkflowStep
-                number="02"
-                title="Create Event"
-                active={Boolean(
-                  surplusEvent
-                )}
-                done={Boolean(
-                  surplusEvent
-                )}
-              />
+            <div className="rescue-progress-card">
 
-              <WorkflowStep
-                number="03"
-                title="Select NGO"
-                active={Boolean(
-                  selectedNgo
-                )}
-                done={Boolean(
-                  selectedNgo
-                )}
-              />
+              <div className="sidebar-card-heading">
 
-              <WorkflowStep
-                number="04"
-                title="Notify"
-                active={Boolean(
-                  donation
-                )}
-                done={Boolean(
-                  donation
-                )}
-              />
+                <div>
+
+                  <span>
+                    RESCUE PROGRESS
+                  </span>
+
+                  <strong>
+                    Workflow completion
+                  </strong>
+
+                </div>
+
+                <b>
+                  {rescueProgress}%
+                </b>
+
+              </div>
+
+
+              <div className="rescue-progress-track">
+
+                <div
+                  className="rescue-progress-fill"
+                  style={{
+                    width: `${rescueProgress}%`,
+                  }}
+                />
+
+              </div>
+
+
+              <div className="sidebar-workflow">
+
+                <SidebarWorkflowStep
+                  number="01"
+                  title="Surplus detected"
+                  done={
+                    surplusDetected
+                  }
+                />
+
+                <SidebarWorkflowStep
+                  number="02"
+                  title="Event recorded"
+                  done={
+                    Boolean(
+                      surplusEvent
+                    )
+                  }
+                />
+
+                <SidebarWorkflowStep
+                  number="03"
+                  title="NGO selected"
+                  done={
+                    Boolean(
+                      selectedNgo
+                    )
+                  }
+                />
+
+                <SidebarWorkflowStep
+                  number="04"
+                  title="Pickup requested"
+                  done={
+                    Boolean(
+                      donation
+                    )
+                  }
+                />
+
+              </div>
+
             </div>
 
-            <div className="rescue-info-card">
-              <ShieldCheck size={19} />
+
+            {/* ---------------------------------------------
+                SELECTED NGO
+                --------------------------------------------- */}
+
+            <div className="selected-ngo-card">
+
+              <div className="sidebar-card-heading">
+
+                <div>
+
+                  <span>
+                    PICKUP PARTNER
+                  </span>
+
+                  <strong>
+                    Selected NGO
+                  </strong>
+
+                </div>
+
+                <Users
+                  size={16}
+                />
+
+              </div>
+
+
+              {selectedNgo ? (
+                <>
+
+                  <div className="selected-ngo-main">
+
+                    <div className="selected-ngo-avatar">
+
+                      <HeartHandshake
+                        size={18}
+                      />
+
+                    </div>
+
+                    <div>
+
+                      <strong>
+                        {selectedNgo.name}
+                      </strong>
+
+                      <span>
+                        {selectedNgo.distance}
+                        {" · "}
+                        {
+                          selectedNgo.responseTime
+                        }
+                      </span>
+
+                    </div>
+
+                  </div>
+
+
+                  <div className="selected-ngo-detail">
+
+                    <MapPin
+                      size={13}
+                    />
+
+                    <span>
+                      {pickupLocation}
+                    </span>
+
+                  </div>
+
+
+                  <div className="selected-ngo-detail">
+
+                    <Phone
+                      size={13}
+                    />
+
+                    <span>
+                      {selectedNgo.phone}
+                    </span>
+
+                  </div>
+
+                </>
+              ) : (
+                <div className="empty-ngo">
+
+                  <div>
+                    <Users size={19} />
+                  </div>
+
+                  <strong>
+                    No NGO selected
+                  </strong>
+
+                  <span>
+                    Select a partner from the
+                    rescue network.
+                  </span>
+
+                </div>
+              )}
+
+            </div>
+
+
+            {/* ---------------------------------------------
+                IMPACT PREVIEW
+                --------------------------------------------- */}
+
+            <div className="impact-preview-card">
+
+              <div className="impact-preview-icon">
+
+                <Sparkles
+                  size={17}
+                />
+
+              </div>
 
               <div>
+
+                <span>
+                  POTENTIAL IMPACT
+                </span>
+
                 <strong>
-                  Traceable rescue
+                  {estimatedWeight} kg food saved
                 </strong>
 
                 <p>
-                  Every surplus event and
-                  donation is stored in
-                  Firebase for impact
-                  reporting.
+                  ≈ {estimatedPeopleHelped} meals
+                  can reach the community
                 </p>
+
               </div>
+
             </div>
+
           </aside>
+
         </section>
+
+
+        {/* =================================================
+            FINAL IMPACT BANNER
+            ================================================= */}
+
+        <section className="rescue-impact-banner">
+
+          <div className="impact-banner-content">
+
+            <div className="impact-banner-icon">
+
+              <Leaf
+                size={24}
+              />
+
+            </div>
+
+            <div>
+
+              <span>
+                REFEED IMPACT LOOP
+              </span>
+
+              <h2>
+                One surplus meal can become
+                one rescued meal.
+              </h2>
+
+              <p>
+                Predict demand → prepare accurately
+                → serve → rescue surplus → measure
+                the impact.
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <div className="impact-banner-metrics">
+
+            <ImpactMetric
+              value={
+                remainingMeals
+              }
+              label="Meals available"
+            />
+
+            <ImpactMetric
+              value={`${estimatedWeight} kg`}
+              label="Food saved"
+            />
+
+            <ImpactMetric
+              value={`${estimatedCo2} kg`}
+              label="CO₂ avoided*"
+            />
+
+          </div>
+
+        </section>
+
+
+        {/* =================================================
+            BOTTOM ACTIONS
+            ================================================= */}
+
+        <section className="rescue-bottom-actions">
+
+          <button
+            className="secondary-rescue-button"
+            onClick={handleBack}
+          >
+
+            <ArrowLeft
+              size={15}
+            />
+
+            Meal Operations
+
+          </button>
+
+
+          <div>
+
+            <button
+              className="secondary-rescue-button"
+              onClick={() =>
+                navigate("/impact")
+              }
+            >
+
+              View Impact Dashboard
+
+              <ArrowRight
+                size={15}
+              />
+
+            </button>
+
+
+            {donation && (
+              <button
+                className="primary-rescue-button bottom-primary"
+                onClick={() =>
+                  navigate(
+                    "/donations",
+                    {
+                      state: {
+                        donationId:
+                          donation.id,
+                      },
+                    }
+                  )
+                }
+              >
+
+                Track Donation
+
+                <ArrowRight
+                  size={15}
+                />
+
+              </button>
+            )}
+
+          </div>
+
+        </section>
+
       </main>
+
     </div>
   );
 }
 
-function InfoItem({
+
+/* =========================================================
+   COMPONENTS
+   ========================================================= */
+
+function CardHeader({
+  step,
+  title,
+  description,
+  icon,
+}) {
+  return (
+    <div className="rescue-card-header">
+
+      <div className="card-header-left">
+
+        <div className="card-step">
+          STEP {step}
+        </div>
+
+        <h3>
+          {title}
+        </h3>
+
+        <p>
+          {description}
+        </p>
+
+      </div>
+
+
+      <div className="card-header-icon">
+        {icon}
+      </div>
+
+    </div>
+  );
+}
+
+
+function OperationMetric({
   label,
   value,
   highlight = false,
-  icon = null,
 }) {
   return (
     <div
-      className={
+      className={`operation-metric ${
         highlight
-          ? "info-item highlight"
-          : "info-item"
-      }
+          ? "highlight"
+          : ""
+      }`}
     >
-      {icon && (
-        <div className="info-item-icon">
-          {icon}
-        </div>
-      )}
 
-      <div>
-        <span>{label}</span>
-        <strong>{value}</strong>
-      </div>
+      <span>
+        {label}
+      </span>
+
+      <strong>
+        {value}
+      </strong>
+
     </div>
   );
 }
+
+
+function LockedState({
+  icon,
+  title,
+  text,
+}) {
+  return (
+    <div className="locked-state">
+
+      <div className="locked-state-icon">
+        {icon}
+      </div>
+
+      <strong>
+        {title}
+      </strong>
+
+      <p>
+        {text}
+      </p>
+
+    </div>
+  );
+}
+
+
+function PickupItem({
+  icon,
+  label,
+  value,
+}) {
+  return (
+    <div className="pickup-item">
+
+      <div className="pickup-item-icon">
+        {icon}
+      </div>
+
+      <div>
+
+        <span>
+          {label}
+        </span>
+
+        <strong>
+          {value}
+        </strong>
+
+      </div>
+
+    </div>
+  );
+}
+
 
 function SummaryRow({
   label,
   value,
+  highlight = false,
 }) {
   return (
-    <div className="summary-row">
-      <span>{label}</span>
-      <strong>{value}</strong>
+    <div
+      className={`summary-row ${
+        highlight
+          ? "highlight"
+          : ""
+      }`}
+    >
+
+      <span>
+        {label}
+      </span>
+
+      <strong>
+        {value}
+      </strong>
+
     </div>
   );
 }
 
-function WorkflowStep({
+
+function FlowStep({
   number,
   title,
-  active,
+  active = false,
+  done = false,
+}) {
+  return (
+    <div
+      className={`flow-step ${
+        active
+          ? "active"
+          : ""
+      } ${
+        done
+          ? "done"
+          : ""
+      }`}
+    >
+
+      <div className="flow-number">
+
+        {done ? (
+          <Check size={12} />
+        ) : (
+          number
+        )}
+
+      </div>
+
+      <span>
+        {title}
+      </span>
+
+    </div>
+  );
+}
+
+
+function FlowLine({
+  active = false,
+}) {
+  return (
+    <div
+      className={`flow-line ${
+        active
+          ? "active"
+          : ""
+      }`}
+    />
+  );
+}
+
+
+function SidebarWorkflowStep({
+  number,
+  title,
   done,
 }) {
   return (
     <div
-      className={`workflow-step ${
-        active ? "active" : ""
-      } ${done ? "done" : ""}`}
+      className={`sidebar-workflow-step ${
+        done
+          ? "done"
+          : ""
+      }`}
     >
-      <div className="workflow-number">
+
+      <div className="sidebar-workflow-number">
+
         {done ? (
-          <CheckCircle2 size={15} />
+          <Check size={11} />
         ) : (
           number
         )}
+
       </div>
 
-      <span>{title}</span>
+      <span>
+        {title}
+      </span>
+
+    </div>
+  );
+}
+
+
+function ImpactMetric({
+  value,
+  label,
+}) {
+  return (
+    <div className="impact-banner-metric">
+
+      <strong>
+        {value}
+      </strong>
+
+      <span>
+        {label}
+      </span>
+
     </div>
   );
 }
