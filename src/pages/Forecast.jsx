@@ -1,1302 +1,2296 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
 import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import {
+  useNavigate,
+} from "react-router-dom";
+
+import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  BrainCircuit,
   CalendarDays,
   CheckCircle2,
+  ChefHat,
   CloudRain,
   CloudSun,
-  Droplets,
+  Database,
+  Loader2,
   LogOut,
   RefreshCw,
   Sparkles,
   Sun,
   Thermometer,
   Utensils,
-  Waves,
-  Wheat,
-  Wind,
-  XCircle,
+  Users,
 } from "lucide-react";
 
-import { predictMealDemand } from "../services/mlService";
-import { getWeatherForDate } from "../services/weatherService";
-import { logoutUser } from "../firebase/auth";
+import {
+  getWeatherForDate,
+} from "../services/weatherService";
+
+import {
+  getHistoricalDemandBeforeDate,
+} from "../services/mealHistoryService";
+
+import {
+  getForecastPrediction,
+} from "../services/mlService";
+
+import {
+  savePrediction,
+} from "../services/predictionService";
 
 import "./Forecast.css";
 
+/* =========================================================
+   CONSTANTS
+   ========================================================= */
 
-// ------------------------------------------------------------
-// Helpers
-// ------------------------------------------------------------
+const DEFAULT_POPULATION = 1000;
 
-const getTodayDate = () => {
-  const today = new Date();
-
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, "0");
-  const day = String(today.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
+const getToday = () => {
+  return new Date()
+    .toISOString()
+    .split("T")[0];
 };
 
+const getTomorrow = () => {
+  const date = new Date();
 
-const formatDate = (dateString) => {
-  if (!dateString) return "";
+  date.setDate(
+    date.getDate() + 1
+  );
 
-  const date = new Date(`${dateString}T00:00:00`);
-
-  return date.toLocaleDateString("en-IN", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  return date
+    .toISOString()
+    .split("T")[0];
 };
 
+/* =========================================================
+   FORMATTERS
+   ========================================================= */
 
-const getWeatherIcon = (category) => {
-  if (category === "rain" || category === "storm") {
-    return <CloudRain size={28} />;
+const formatNumber = (value) => {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return "0";
+  }
+
+  return number.toLocaleString(
+    "en-IN"
+  );
+};
+
+const formatDecimal = (
+  value,
+  decimals = 1
+) => {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return "0";
+  }
+
+  return number.toFixed(decimals);
+};
+
+const getDayTypeLabel = (
+  dayType
+) => {
+  const labels = {
+    regular: "Regular Day",
+    exam: "Exam Day",
+    holiday: "Holiday",
+  };
+
+  return (
+    labels[dayType] ||
+    "Regular Day"
+  );
+};
+
+/* =========================================================
+   WEATHER ICON
+   ========================================================= */
+
+const getWeatherIcon = (
+  category
+) => {
+  if (
+    category === "rain" ||
+    category === "storm"
+  ) {
+    return (
+      <CloudRain size={22} />
+    );
   }
 
   if (category === "hot") {
-    return <Sun size={28} />;
+    return (
+      <Sun size={22} />
+    );
   }
 
   if (category === "cold") {
-    return <CloudSun size={28} />;
+    return (
+      <CloudSun size={22} />
+    );
   }
 
-  return <CloudSun size={28} />;
+  return (
+    <CloudSun size={22} />
+  );
 };
 
-
-const getWeatherLabel = (category) => {
-  switch (category) {
-    case "rain":
-      return "Rainy";
-    case "storm":
-      return "Storm";
-    case "hot":
-      return "Hot";
-    case "cold":
-      return "Cold";
-    default:
-      return "Normal";
-  }
-};
-
-
-const formatNumber = (value) => {
-  if (value === undefined || value === null || Number.isNaN(Number(value))) {
-    return "—";
-  }
-
-  return Number(value).toLocaleString("en-IN");
-};
-
-
-// ------------------------------------------------------------
-// Component
-// ------------------------------------------------------------
+/* =========================================================
+   MAIN COMPONENT
+   ========================================================= */
 
 export default function Forecast() {
-  const navigate = useNavigate();
+  const navigate =
+    useNavigate();
 
-  const [formData, setFormData] = useState({
-    date: getTodayDate(),
-    mealType: "lunch",
-    dayType: "regular",
-  });
+  /* =======================================================
+     INPUTS
+     ======================================================= */
 
-  const [weather, setWeather] = useState(null);
-  const [weatherLoading, setWeatherLoading] = useState(true);
-  const [weatherError, setWeatherError] = useState("");
+  const [date, setDate] =
+    useState(getTomorrow());
 
-  const [forecast, setForecast] = useState(null);
-  const [forecastLoading, setForecastLoading] = useState(false);
-  const [forecastError, setForecastError] = useState("");
+  const [mealType, setMealType] =
+    useState("Lunch");
 
-  // ----------------------------------------------------------
-  // Load weather whenever date changes
-  // ----------------------------------------------------------
+  const [dayType, setDayType] =
+    useState("regular");
+
+  const [
+    campusPopulation,
+    setCampusPopulation,
+  ] = useState(
+    DEFAULT_POPULATION
+  );
+
+  const [
+    isFestival,
+    setIsFestival,
+  ] = useState(false);
+
+  /* =======================================================
+     WEATHER
+     ======================================================= */
+
+  const [weather, setWeather] =
+    useState(null);
+
+  const [
+    weatherLoading,
+    setWeatherLoading,
+  ] = useState(false);
+
+  const [
+    weatherError,
+    setWeatherError,
+  ] = useState("");
+
+  /* =======================================================
+     HISTORY
+     ======================================================= */
+
+  const [history, setHistory] =
+    useState([]);
+
+  const [
+    historyLoading,
+    setHistoryLoading,
+  ] = useState(false);
+
+  const [
+    historyError,
+    setHistoryError,
+  ] = useState("");
+
+  /* =======================================================
+     FORECAST
+     ======================================================= */
+
+  const [
+    prediction,
+    setPrediction,
+  ] = useState(null);
+
+  const [
+    predictionLoading,
+    setPredictionLoading,
+  ] = useState(false);
+
+  const [
+    predictionError,
+    setPredictionError,
+  ] = useState("");
+
+  /* =======================================================
+     FIREBASE SAVE
+     ======================================================= */
+
+  const [
+    predictionSaving,
+    setPredictionSaving,
+  ] = useState(false);
+
+  const [
+    predictionSaved,
+    setPredictionSaved,
+  ] = useState(false);
+
+  const [
+    predictionSaveError,
+    setPredictionSaveError,
+  ] = useState("");
+
+  /* =======================================================
+     DATA REFRESH
+     ======================================================= */
+
+  const [
+    refreshKey,
+    setRefreshKey,
+  ] = useState(0);
+
+  /* =======================================================
+     RESET PREDICTION
+     ======================================================= */
+
+  const resetPrediction = () => {
+    setPrediction(null);
+    setPredictionError("");
+    setPredictionSaved(false);
+    setPredictionSaveError("");
+  };
+
+  /* =======================================================
+     LOAD WEATHER
+     ======================================================= */
 
   useEffect(() => {
     let cancelled = false;
 
-    const loadWeather = async () => {
-      if (!formData.date) return;
-
-      setWeatherLoading(true);
-      setWeatherError("");
-
-      try {
-        const result = await getWeatherForDate(formData.date);
-
-        if (!cancelled) {
-          setWeather(result);
+    const loadWeather =
+      async () => {
+        if (!date) {
+          return;
         }
-      } catch (error) {
-        console.error("Weather loading failed:", error);
 
-        if (!cancelled) {
-          setWeather(null);
-          setWeatherError(
-            error?.message || "Unable to load weather information."
+        try {
+          setWeatherLoading(true);
+          setWeatherError("");
+
+          const result =
+            await getWeatherForDate(
+              date
+            );
+
+          if (!cancelled) {
+            setWeather(result);
+          }
+        } catch (error) {
+          console.error(
+            "Weather loading error:",
+            error
           );
+
+          if (!cancelled) {
+            setWeather(null);
+
+            setWeatherError(
+              error?.message ||
+                "Unable to load weather information."
+            );
+          }
+        } finally {
+          if (!cancelled) {
+            setWeatherLoading(false);
+          }
         }
-      } finally {
-        if (!cancelled) {
-          setWeatherLoading(false);
-        }
-      }
-    };
+      };
 
     loadWeather();
 
     return () => {
       cancelled = true;
     };
-  }, [formData.date]);
+  }, [date, refreshKey]);
 
+  /* =======================================================
+     LOAD FIREBASE HISTORY
+     ======================================================= */
 
-  // ----------------------------------------------------------
-  // Form change
-  // ----------------------------------------------------------
+  useEffect(() => {
+    let cancelled = false;
 
-  const handleChange = (field, value) => {
-    setFormData((previous) => ({
-      ...previous,
-      [field]: value,
-    }));
+    const loadHistory =
+      async () => {
+        if (!date || !mealType) {
+          return;
+        }
 
-    setForecastError("");
-  };
+        try {
+          setHistoryLoading(true);
+          setHistoryError("");
 
+          const records =
+            await getHistoricalDemandBeforeDate(
+              mealType,
+              date,
+              1000
+            );
 
-  // ----------------------------------------------------------
-  // Refresh weather
-  // ----------------------------------------------------------
+          if (!cancelled) {
+            setHistory(
+              Array.isArray(records)
+                ? records
+                : []
+            );
+          }
+        } catch (error) {
+          console.error(
+            "Meal history loading error:",
+            error
+          );
 
-  const handleRefreshWeather = async () => {
-    if (!formData.date) return;
+          if (!cancelled) {
+            setHistory([]);
 
-    setWeatherLoading(true);
-    setWeatherError("");
+            setHistoryError(
+              error?.message ||
+                "Unable to load historical meal data."
+            );
+          }
+        } finally {
+          if (!cancelled) {
+            setHistoryLoading(false);
+          }
+        }
+      };
 
-    try {
-      const result = await getWeatherForDate(formData.date);
-      setWeather(result);
-    } catch (error) {
-      console.error(error);
+    loadHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    date,
+    mealType,
+    refreshKey,
+  ]);
+
+  /* =======================================================
+     HISTORICAL FEATURES
+     ======================================================= */
+
+  const historicalStats =
+    useMemo(() => {
+      const sorted =
+        [...history]
+          .filter(
+            (record) =>
+              record &&
+              record.date &&
+              Number.isFinite(
+                Number(
+                  record.actual_headcount
+                )
+              )
+          )
+          .sort((a, b) =>
+            String(a.date).localeCompare(
+              String(b.date)
+            )
+          );
+
+      const demand =
+        sorted.map(
+          (record) =>
+            Number(
+              record.actual_headcount
+            )
+        );
+
+      const getLag = (
+        daysBack
+      ) => {
+        if (
+          demand.length <
+          daysBack
+        ) {
+          return null;
+        }
+
+        return demand[
+          demand.length -
+            daysBack
+        ];
+      };
+
+      const getRolling =
+        (windowSize) => {
+          if (
+            demand.length === 0
+          ) {
+            return null;
+          }
+
+          const values =
+            demand.slice(
+              -windowSize
+            );
+
+          if (
+            values.length === 0
+          ) {
+            return null;
+          }
+
+          const total =
+            values.reduce(
+              (
+                sum,
+                value
+              ) =>
+                sum + value,
+              0
+            );
+
+          return (
+            total /
+            values.length
+          );
+        };
+
+      const average =
+        demand.length
+          ? demand.reduce(
+              (
+                sum,
+                value
+              ) =>
+                sum + value,
+              0
+            ) /
+            demand.length
+          : null;
+
+      return {
+        totalRecords:
+          sorted.length,
+
+        latestDemand:
+          demand.length
+            ? demand[
+                demand.length - 1
+              ]
+            : null,
+
+        average,
+
+        minimum:
+          demand.length
+            ? Math.min(
+                ...demand
+              )
+            : null,
+
+        maximum:
+          demand.length
+            ? Math.max(
+                ...demand
+              )
+            : null,
+
+        lag_1:
+          getLag(1),
+
+        lag_7:
+          getLag(7),
+
+        lag_14:
+          getLag(14),
+
+        rolling_7:
+          getRolling(7),
+
+        rolling_14:
+          getRolling(14),
+
+        rolling_30:
+          getRolling(30),
+
+        oldestDate:
+          sorted.length
+            ? sorted[0].date
+            : null,
+
+        latestDate:
+          sorted.length
+            ? sorted[
+                sorted.length - 1
+              ].date
+            : null,
+      };
+    }, [history]);
+
+  /* =======================================================
+     FEATURE READINESS
+     ======================================================= */
+
+  const featureReadiness =
+    useMemo(() => {
+      const total =
+        historicalStats.totalRecords;
+
+      return {
+        hasHistory:
+          total > 0,
+
+        hasSeven:
+          total >= 7,
+
+        hasFourteen:
+          total >= 14,
+
+        hasThirty:
+          total >= 30,
+      };
+    }, [historicalStats]);
+
+  /* =======================================================
+     CAN GENERATE
+     ======================================================= */
+
+  const canGenerate =
+    Boolean(date) &&
+    Boolean(mealType) &&
+    Number(campusPopulation) >
+      0 &&
+    !weatherLoading &&
+    !historyLoading &&
+    !predictionLoading;
+
+  /* =======================================================
+     GENERATE FORECAST
+     ======================================================= */
+
+  const handleGenerateForecast =
+    async () => {
+      setPredictionError("");
+      setPredictionSaveError("");
+      setPredictionSaved(false);
+      setPrediction(null);
+
+      if (!date) {
+        setPredictionError(
+          "Please select a forecast date."
+        );
+        return;
+      }
+
+      if (!mealType) {
+        setPredictionError(
+          "Please select a meal type."
+        );
+        return;
+      }
+
+      const population =
+        Number(
+          campusPopulation
+        );
+
+      if (
+        !Number.isFinite(
+          population
+        ) ||
+        population <= 0
+      ) {
+        setPredictionError(
+          "Campus population must be greater than zero."
+        );
+        return;
+      }
+
+      if (!weather) {
+        setPredictionError(
+          "Weather data is not available yet. Please wait or refresh the data."
+        );
+        return;
+      }
+
+      try {
+        setPredictionLoading(true);
+
+        /* --------------------------------------------------
+           STEP 1
+           Call XGBoost API
+           -------------------------------------------------- */
+
+        const result =
+          await getForecastPrediction({
+            date,
+            mealType,
+            dayType,
+
+            campusPopulation:
+              population,
+
+            isFestival:
+              isFestival ? 1 : 0,
+
+            temperature:
+              weather.temperature ??
+              weather.maxTemperature ??
+              28,
+
+            rainfallMm:
+              weather.rainfallMm ??
+              0,
+
+            history,
+          });
+
+        setPrediction(result);
+
+        /* --------------------------------------------------
+           STEP 2
+           Save prediction to Firebase
+           -------------------------------------------------- */
+
+        try {
+          setPredictionSaving(true);
+
+          await savePrediction({
+            date,
+            mealType,
+            dayType,
+
+            campusPopulation:
+              population,
+
+            isFestival:
+              isFestival ? 1 : 0,
+
+            weather,
+
+            predictedMeals:
+              result.predicted_meals,
+
+            recommendedCooking:
+              result.recommended_cooking,
+
+            ingredients:
+              result.ingredients ||
+              {},
+
+            historicalRecords:
+              result.historical_records ??
+              history.length,
+
+            historicalFeatures:
+              result.historical_features ||
+              {},
+
+            model:
+              result.model ||
+              "XGBoost",
+          });
+
+          setPredictionSaved(
+            true
+          );
+        } catch (saveError) {
+          console.error(
+            "Prediction save error:",
+            saveError
+          );
+
+          setPredictionSaveError(
+            saveError?.message ||
+              "Prediction was generated, but Firebase could not save it."
+          );
+        } finally {
+          setPredictionSaving(
+            false
+          );
+        }
+      } catch (error) {
+        console.error(
+          "Forecast generation error:",
+          error
+        );
+
+        setPredictionError(
+          error?.message ||
+            "Unable to generate forecast."
+        );
+
+        setPrediction(null);
+      } finally {
+        setPredictionLoading(
+          false
+        );
+      }
+    };
+
+  /* =======================================================
+     CONTINUE TO PREPARATION
+     ======================================================= */
+
+  const handleContinuePreparation =
+    () => {
+      if (!prediction) {
+        return;
+      }
+
+      navigate(
+        "/preparation",
+        {
+          state: {
+            forecast: {
+              date,
+
+              mealType,
+
+              dayType,
+
+              campusPopulation:
+                Number(
+                  campusPopulation
+                ),
+
+              predictedMeals:
+                Number(
+                  prediction.predicted_meals
+                ),
+
+              recommendedCooking:
+                Number(
+                  prediction.recommended_cooking ||
+                    prediction.predicted_meals
+                ),
+
+              ingredients:
+                prediction.ingredients ||
+                {},
+
+              weather,
+
+              historicalRecords:
+                prediction.historical_records ??
+                history.length,
+
+              historicalFeatures:
+                prediction.historical_features ||
+                {},
+            },
+          },
+        }
+      );
+    };
+
+  /* =======================================================
+     RESET ALL
+     ======================================================= */
+
+  const handleReset =
+    () => {
+      setDate(getTomorrow());
+      setMealType("Lunch");
+      setDayType("regular");
+      setCampusPopulation(
+        DEFAULT_POPULATION
+      );
+      setIsFestival(false);
 
       setWeather(null);
-      setWeatherError(
-        error?.message || "Unable to refresh weather information."
+      setHistory([]);
+
+      setPrediction(null);
+
+      setWeatherError("");
+      setHistoryError("");
+      setPredictionError("");
+      setPredictionSaveError("");
+
+      setPredictionSaved(false);
+    };
+
+  /* =======================================================
+     REFRESH
+     ======================================================= */
+
+  const handleRefresh =
+    () => {
+      setRefreshKey(
+        (value) =>
+          value + 1
       );
-    } finally {
-      setWeatherLoading(false);
-    }
-  };
+    };
 
-
-  // ----------------------------------------------------------
-  // Generate forecast
-  // ----------------------------------------------------------
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-
-    if (!formData.date) {
-      setForecastError("Please select a forecast date.");
-      return;
-    }
-
-    if (!weather) {
-      setForecastError(
-        "Weather information is not available yet. Please wait or refresh."
-      );
-      return;
-    }
-
-    setForecastLoading(true);
-    setForecastError("");
-
-    try {
-      const result = await predictMealDemand({
-        date: formData.date,
-        mealType:
-          formData.mealType.charAt(0).toUpperCase() +
-          formData.mealType.slice(1),
-        dayType: formData.dayType,
-
-        // Open-Meteo weather
-        temperature: weather.temperature,
-        rainfallMm: weather.rainfallMm,
-
-        // Current demo campus population.
-        // Later this can come from Firebase.
-        campusPopulation: 1000,
-
-        isFestival: 0,
-      });
-
-      setForecast(result);
-    } catch (error) {
-      console.error("Forecast failed:", error);
-
-      setForecastError(
-        error?.message ||
-          "Unable to generate forecast. Make sure the ML API is running."
-      );
-    } finally {
-      setForecastLoading(false);
-    }
-  };
-
-
-  // ----------------------------------------------------------
-  // Logout
-  // ----------------------------------------------------------
-
-  const handleLogout = async () => {
-    try {
-      await logoutUser();
-      navigate("/login");
-    } catch (error) {
-      console.error("Logout failed:", error);
-    }
-  };
-
-
-  // ----------------------------------------------------------
-  // Derived values
-  // ----------------------------------------------------------
-
-  const predictedMeals = forecast?.predicted_meals ?? null;
-  const recommendedCooking = forecast?.recommended_cooking ?? null;
-
-  const ingredients = forecast?.ingredients || {};
-
-  const ingredientEntries = [
-    {
-      name: "Rice",
-      value: ingredients.Rice,
-      icon: Wheat,
-    },
-    {
-      name: "Dal",
-      value: ingredients.Dal,
-      icon: Utensils,
-    },
-    {
-      name: "Vegetables",
-      value: ingredients.Vegetables,
-      icon: Sparkles,
-    },
-    {
-      name: "Oil",
-      value: ingredients.Oil,
-      icon: Droplets,
-    },
-    {
-      name: "Flour",
-      value: ingredients.Flour,
-      icon: Wheat,
-    },
-    {
-      name: "Spices",
-      value: ingredients.Spices,
-      icon: Sparkles,
-    },
-  ];
-
-
-  // ----------------------------------------------------------
-  // UI
-  // ----------------------------------------------------------
+  /* =======================================================
+     RENDER
+     ======================================================= */
 
   return (
     <div className="forecast-page">
 
-      {/* =====================================================
-          TOP NAVIGATION
-      ====================================================== */}
+      {/* ===================================================
+          HEADER
+          =================================================== */}
 
       <header className="forecast-header">
         <div className="forecast-header-inner">
 
-          <Link to="/dashboard" className="forecast-brand">
+          <button
+            className="forecast-back-button"
+            onClick={() =>
+              navigate(
+                "/dashboard"
+              )
+            }
+          >
+            <ArrowLeft size={16} />
+            Dashboard
+          </button>
+
+          <div className="forecast-brand">
             <div className="forecast-brand-icon">
-              <Utensils size={20} />
+              <BrainCircuit
+                size={23}
+              />
             </div>
 
             <div>
-              <div className="forecast-brand-name">
-                MealRescue
-              </div>
+              <h1>
+                AI Demand Forecast
+              </h1>
 
-              <div className="forecast-brand-subtitle">
-                Canteen Intelligence
-              </div>
+              <p>
+                Predict campus meal
+                demand with real
+                operational data.
+              </p>
             </div>
-          </Link>
-
+          </div>
 
           <div className="forecast-header-actions">
 
-            <Link
-              to="/dashboard"
-              className="forecast-dashboard-link"
+            <button
+              className="forecast-refresh-button"
+              onClick={
+                handleRefresh
+              }
+              disabled={
+                weatherLoading ||
+                historyLoading
+              }
             >
-              <ArrowLeft size={17} />
-              Dashboard
-            </Link>
+              <RefreshCw
+                size={15}
+                className={
+                  weatherLoading ||
+                  historyLoading
+                    ? "spin"
+                    : ""
+                }
+              />
+
+              Refresh
+            </button>
 
             <button
-              type="button"
-              onClick={handleLogout}
-              className="forecast-logout-button"
+              className="forecast-reset-button"
+              onClick={
+                handleReset
+              }
             >
-              <LogOut size={17} />
+              Reset
+            </button>
+
+            <button
+              className="forecast-logout-button"
+              onClick={() =>
+                navigate(
+                  "/login"
+                )
+              }
+            >
+              <LogOut size={15} />
               Logout
             </button>
 
           </div>
-
         </div>
       </header>
 
+      <main className="forecast-container">
 
-      {/* =====================================================
-          MAIN PAGE
-      ====================================================== */}
+        {/* =================================================
+            HERO
+            ================================================= */}
 
-      <main className="forecast-main">
+        <section className="forecast-hero">
 
-        <div className="forecast-container">
+          <div>
+            <div className="forecast-eyebrow">
+              REFEED · PREDICT
+            </div>
 
-          {/* =================================================
-              PAGE TITLE
-          ================================================== */}
+            <h2>
+              Forecast tomorrow's
+              meal demand.
+            </h2>
 
-          <section className="forecast-heading">
+            <p>
+              Combine historical
+              meal operations,
+              academic-day
+              information and live
+              weather to create a
+              practical cooking
+              target.
+            </p>
+          </div>
 
-            <div className="forecast-heading-left">
+          <div className="forecast-ai-badge">
+            <Sparkles size={16} />
+            XGBoost AI Model
+          </div>
 
-              <div className="forecast-eyebrow">
-                <Sparkles size={15} />
-                AI-Powered Demand Planning
-              </div>
+        </section>
 
-              <h1>
-                Demand Forecast
-              </h1>
+        {/* =================================================
+            WORKFLOW
+            ================================================= */}
+
+        <section className="forecast-workflow">
+
+          <WorkflowStep
+            number="01"
+            title="Configure"
+            active
+          />
+
+          <WorkflowLine />
+
+          <WorkflowStep
+            number="02"
+            title="Predict"
+          />
+
+          <WorkflowLine />
+
+          <WorkflowStep
+            number="03"
+            title="Prepare"
+          />
+
+          <WorkflowLine />
+
+          <WorkflowStep
+            number="04"
+            title="Rescue"
+          />
+
+        </section>
+
+        {/* =================================================
+            ERROR
+            ================================================= */}
+
+        {(predictionError ||
+          weatherError ||
+          historyError) && (
+          <div className="forecast-error">
+
+            <AlertTriangle
+              size={19}
+            />
+
+            <div>
+              <strong>
+                Forecast data issue
+              </strong>
 
               <p>
-                Predict canteen meal demand using historical patterns,
-                academic schedules and live weather conditions.
+                {predictionError ||
+                  weatherError ||
+                  historyError}
               </p>
-
             </div>
 
-            <div className="forecast-engine-badge">
-              <span className="status-dot" />
-              XGBoost Engine Ready
+          </div>
+        )}
+
+        {/* =================================================
+            STEP 1 CONFIGURATION
+            ================================================= */}
+
+        <section className="forecast-panel">
+
+          <div className="forecast-panel-header">
+
+            <div className="section-number">
+              01
             </div>
 
-          </section>
-
-
-          {/* =================================================
-              MAIN GRID
-          ================================================== */}
-
-          <section className="forecast-grid">
-
-            {/* =================================================
-                LEFT — FORECAST FORM
-            ================================================== */}
-
-            <div className="forecast-card">
-
-              <div className="forecast-card-header">
-
-                <div className="forecast-card-icon">
-                  <CalendarDays size={21} />
-                </div>
-
-                <div>
-                  <h2>
-                    Forecast Configuration
-                  </h2>
-
-                  <p>
-                    Select the day and meal you want to predict.
-                  </p>
-                </div>
-
-              </div>
-
-
-              <form
-                onSubmit={handleSubmit}
-                className="forecast-form"
-              >
-
-                {/* DATE */}
-
-                <div className="forecast-field">
-
-                  <label htmlFor="forecast-date">
-                    Forecast Date
-                  </label>
-
-                  <div className="forecast-input-wrapper">
-
-                    <CalendarDays size={18} />
-
-                    <input
-                      id="forecast-date"
-                      type="date"
-                      value={formData.date}
-                      onChange={(event) =>
-                        handleChange("date", event.target.value)
-                      }
-                      required
-                    />
-
-                  </div>
-
-                  {formData.date && (
-                    <span className="forecast-field-help">
-                      {formatDate(formData.date)}
-                    </span>
-                  )}
-
-                </div>
-
-
-                {/* MEAL TYPE */}
-
-                <div className="forecast-field">
-
-                  <label>
-                    Meal Type
-                  </label>
-
-                  <div className="meal-type-grid">
-
-                    <label
-                      className={`meal-option ${
-                        formData.mealType === "lunch"
-                          ? "meal-option-active"
-                          : ""
-                      }`}
-                    >
-
-                      <input
-                        type="radio"
-                        name="mealType"
-                        value="lunch"
-                        checked={formData.mealType === "lunch"}
-                        onChange={(event) =>
-                          handleChange(
-                            "mealType",
-                            event.target.value
-                          )
-                        }
-                      />
-
-                      <div className="meal-option-content">
-
-                        <Utensils size={21} />
-
-                        <div>
-                          <strong>Lunch</strong>
-                          <span>Midday meal</span>
-                        </div>
-
-                      </div>
-
-                    </label>
-
-
-                    <label
-                      className={`meal-option ${
-                        formData.mealType === "dinner"
-                          ? "meal-option-active"
-                          : ""
-                      }`}
-                    >
-
-                      <input
-                        type="radio"
-                        name="mealType"
-                        value="dinner"
-                        checked={formData.mealType === "dinner"}
-                        onChange={(event) =>
-                          handleChange(
-                            "mealType",
-                            event.target.value
-                          )
-                        }
-                      />
-
-                      <div className="meal-option-content">
-
-                        <Utensils size={21} />
-
-                        <div>
-                          <strong>Dinner</strong>
-                          <span>Evening meal</span>
-                        </div>
-
-                      </div>
-
-                    </label>
-
-                  </div>
-
-                </div>
-
-
-                {/* DAY TYPE */}
-
-                <div className="forecast-field">
-
-                  <label htmlFor="day-type">
-                    Academic Day Type
-                  </label>
-
-                  <select
-                    id="day-type"
-                    value={formData.dayType}
-                    onChange={(event) =>
-                      handleChange(
-                        "dayType",
-                        event.target.value
-                      )
-                    }
-                  >
-
-                    <option value="regular">
-                      Regular Class Day
-                    </option>
-
-                    <option value="exam">
-                      Examination Day
-                    </option>
-
-                    <option value="holiday">
-                      Holiday
-                    </option>
-
-                  </select>
-
-                </div>
-
-
-                {/* =================================================
-                    WEATHER
-                ================================================== */}
-
-                <div className="weather-card">
-
-                  <div className="weather-card-top">
-
-                    <div className="weather-title">
-
-                      <div className="weather-icon">
-                        {weatherLoading ? (
-                          <RefreshCw
-                            size={25}
-                            className="spin"
-                          />
-                        ) : (
-                          getWeatherIcon(weather?.category)
-                        )}
-                      </div>
-
-                      <div>
-
-                        <div className="weather-title-row">
-
-                          <h3>
-                            Campus Weather
-                          </h3>
-
-                          <span className="automatic-badge">
-                            Automatic
-                          </span>
-
-                        </div>
-
-                        <p>
-                          Open-Meteo live forecast
-                        </p>
-
-                      </div>
-
-                    </div>
-
-
-                    <button
-                      type="button"
-                      onClick={handleRefreshWeather}
-                      disabled={weatherLoading}
-                      className="weather-refresh-button"
-                      title="Refresh weather"
-                    >
-                      <RefreshCw
-                        size={17}
-                        className={
-                          weatherLoading ? "spin" : ""
-                        }
-                      />
-                    </button>
-
-                  </div>
-
-
-                  {weatherLoading && (
-
-                    <div className="weather-loading">
-
-                      <RefreshCw
-                        size={19}
-                        className="spin"
-                      />
-
-                      <span>
-                        Loading weather data...
-                      </span>
-
-                    </div>
-
-                  )}
-
-
-                  {!weatherLoading && weatherError && (
-
-                    <div className="weather-error">
-
-                      <XCircle size={19} />
-
-                      <div>
-
-                        <strong>
-                          Weather unavailable
-                        </strong>
-
-                        <span>
-                          {weatherError}
-                        </span>
-
-                      </div>
-
-                    </div>
-
-                  )}
-
-
-                  {!weatherLoading &&
-                    !weatherError &&
-                    weather && (
-
-                    <>
-
-                      <div className="weather-main">
-
-                        <div className="weather-temperature">
-
-                          <strong>
-                            {Math.round(weather.temperature)}
-                            <span>°C</span>
-                          </strong>
-
-                          <span>
-                            {weather.description}
-                          </span>
-
-                        </div>
-
-                        <div className="weather-category">
-                          {getWeatherLabel(weather.category)}
-                        </div>
-
-                      </div>
-
-
-                      <div className="weather-stats">
-
-                        <div className="weather-stat">
-
-                          <Thermometer size={17} />
-
-                          <div>
-                            <span>Min Temp</span>
-                            <strong>
-                              {Math.round(weather.minTemperature)}°C
-                            </strong>
-                          </div>
-
-                        </div>
-
-
-                        <div className="weather-stat">
-
-                          <Sun size={17} />
-
-                          <div>
-                            <span>Max Temp</span>
-                            <strong>
-                              {Math.round(weather.maxTemperature)}°C
-                            </strong>
-                          </div>
-
-                        </div>
-
-
-                        <div className="weather-stat">
-
-                          <CloudRain size={17} />
-
-                          <div>
-                            <span>Rain</span>
-                            <strong>
-                              {weather.rainfallMm.toFixed(1)} mm
-                            </strong>
-                          </div>
-
-                        </div>
-
-
-                        <div className="weather-stat">
-
-                          <Droplets size={17} />
-
-                          <div>
-                            <span>Precipitation</span>
-                            <strong>
-                              {weather.precipitationMm.toFixed(1)} mm
-                            </strong>
-                          </div>
-
-                        </div>
-
-                      </div>
-
-
-                      <div className="weather-source">
-
-                        <Waves size={14} />
-
-                        Weather source: Open-Meteo
-
-                      </div>
-
-                    </>
-
-                  )}
-
-                </div>
-
-
-                {/* ERROR */}
-
-                {forecastError && (
-
-                  <div className="forecast-error">
-
-                    <XCircle size={20} />
-
-                    <div>
-
-                      <strong>
-                        Forecast could not be generated
-                      </strong>
-
-                      <span>
-                        {forecastError}
-                      </span>
-
-                    </div>
-
-                  </div>
-
-                )}
-
-
-                {/* BUTTON */}
-
-                <button
-                  type="submit"
-                  disabled={
-                    forecastLoading ||
-                    weatherLoading ||
-                    !weather
-                  }
-                  className="generate-button"
-                >
-
-                  {forecastLoading ? (
-                    <>
-                      <RefreshCw
-                        size={19}
-                        className="spin"
-                      />
-
-                      Generating Forecast...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles size={19} />
-
-                      Generate AI Forecast
-
-                      <ArrowRight size={18} />
-                    </>
-                  )}
-
-                </button>
-
-              </form>
-
+            <div>
+              <span>
+                INPUTS
+              </span>
+
+              <h3>
+                Forecast Configuration
+              </h3>
+
+              <p>
+                Select the meal and
+                campus conditions.
+              </p>
             </div>
 
-
-            {/* =================================================
-                RIGHT — RESULT
-            ================================================== */}
-
-            <div className="forecast-result-card">
-
-              {!forecast && !forecastLoading && (
-
-                <div className="forecast-empty">
-
-                  <div className="forecast-empty-icon">
-                    <Sparkles size={32} />
-                  </div>
-
-                  <h2>
-                    Your Forecast Will Appear Here
-                  </h2>
-
-                  <p>
-                    Select a date, meal type and academic day.
-                    Then generate a forecast to see predicted
-                    demand and recommended cooking quantity.
-                  </p>
-
-                  <div className="forecast-empty-points">
-
-                    <div>
-                      <CheckCircle2 size={17} />
-                      Historical demand
-                    </div>
-
-                    <div>
-                      <CheckCircle2 size={17} />
-                      Academic calendar
-                    </div>
-
-                    <div>
-                      <CheckCircle2 size={17} />
-                      Live weather
-                    </div>
-
-                    <div>
-                      <CheckCircle2 size={17} />
-                      XGBoost prediction
-                    </div>
-
-                  </div>
-
-                </div>
-
-              )}
-
-
-              {forecastLoading && (
-
-                <div className="forecast-empty">
-
-                  <div className="forecast-loading-icon">
-                    <RefreshCw
-                      size={32}
-                      className="spin"
-                    />
-                  </div>
-
-                  <h2>
-                    Generating Forecast
-                  </h2>
-
-                  <p>
-                    The XGBoost model is processing the selected
-                    date, meal type and weather conditions.
-                  </p>
-
-                  <div className="loading-line" />
-                  <div className="loading-line short" />
-
-                </div>
-
-              )}
-
-
-              {forecast && !forecastLoading && (
-
-                <div className="forecast-result-content">
-
-                  {/* RESULT HEADER */}
-
-                  <div className="result-header">
-
-                    <div>
-
-                      <div className="result-success">
-                        <CheckCircle2 size={17} />
-                        Forecast generated successfully
-                      </div>
-
-                      <h2>
-                        {forecast.meal_type} Demand
-                      </h2>
-
-                      <p>
-                        {formatDate(forecast.date)}
-                      </p>
-
-                    </div>
-
-                    <div className="result-model">
-                      <Sparkles size={15} />
-                      XGBoost
-                    </div>
-
-                  </div>
-
-
-                  {/* BIG PREDICTION */}
-
-                  <div className="prediction-box">
-
-                    <div className="prediction-label">
-                      Predicted Meals
-                    </div>
-
-                    <div className="prediction-number">
-                      {formatNumber(predictedMeals)}
-                    </div>
-
-                    <div className="prediction-description">
-                      Estimated students expected to take this meal
-                    </div>
-
-                  </div>
-
-
-                  {/* RECOMMENDED */}
-
-                  <div className="recommendation-box">
-
-                    <div className="recommendation-icon">
-                      <Utensils size={21} />
-                    </div>
-
-                    <div className="recommendation-text">
-
-                      <span>
-                        Recommended Cooking Quantity
-                      </span>
-
-                      <strong>
-                        {formatNumber(recommendedCooking)} meals
-                      </strong>
-
-                    </div>
-
-                    <div className="recommendation-buffer">
-                      +5%
-                    </div>
-
-                  </div>
-
-
-                  {/* WEATHER INPUT USED */}
-
-                  {weather && (
-
-                    <div className="result-weather">
-
-                      <div className="result-weather-title">
-                        <CloudSun size={18} />
-
-                        Weather used by model
-                      </div>
-
-                      <div className="result-weather-values">
-
-                        <span>
-                          {Math.round(weather.temperature)}°C
-                        </span>
-
-                        <span>
-                          {weather.description}
-                        </span>
-
-                        <span>
-                          Rain {weather.rainfallMm.toFixed(1)} mm
-                        </span>
-
-                      </div>
-
-                    </div>
-
-                  )}
-
-                </div>
-
-              )}
-
-            </div>
-
-          </section>
-
-
-          {/* =================================================
-              INGREDIENT PLAN
-          ================================================== */}
-
-          {forecast && !forecastLoading && (
-
-            <section className="ingredients-section">
-
-              <div className="section-heading">
-
-                <div>
-
-                  <div className="section-eyebrow">
-                    <Wheat size={15} />
-                    Preparation Plan
-                  </div>
-
-                  <h2>
-                    Ingredient Requirements
-                  </h2>
-
-                  <p>
-                    Estimated quantities based on the recommended
-                    cooking quantity with a 3% ingredient buffer.
-                  </p>
-
-                </div>
-
-                <div className="ingredient-meal-count">
-                  <Utensils size={16} />
-
-                  {formatNumber(recommendedCooking)} meals
-
-                </div>
-
-              </div>
-
-
-              <div className="ingredient-grid">
-
-                {ingredientEntries.map((ingredient) => {
-
-                  const Icon = ingredient.icon;
-
-                  return (
-
-                    <div
-                      key={ingredient.name}
-                      className="ingredient-card"
-                    >
-
-                      <div className="ingredient-icon">
-                        <Icon size={20} />
-                      </div>
-
-                      <div className="ingredient-info">
-
-                        <span>
-                          {ingredient.name}
-                        </span>
-
-                        <strong>
-                          {ingredient.value !== undefined
-                            ? `${ingredient.value} kg`
-                            : "—"}
-                        </strong>
-
-                      </div>
-
-                    </div>
-
+          </div>
+
+          <div className="forecast-input-grid">
+
+            <div className="forecast-field">
+
+              <label>
+                <CalendarDays
+                  size={15}
+                />
+
+                Forecast Date
+              </label>
+
+              <input
+                type="date"
+                value={date}
+                min={getToday()}
+                onChange={(event) => {
+                  setDate(
+                    event.target.value
                   );
+                  resetPrediction();
+                }}
+              />
 
-                })}
+            </div>
 
+            <div className="forecast-field">
+
+              <label>
+                <Utensils
+                  size={15}
+                />
+
+                Meal Type
+              </label>
+
+              <select
+                value={mealType}
+                onChange={(event) => {
+                  setMealType(
+                    event.target.value
+                  );
+                  resetPrediction();
+                }}
+              >
+                <option value="Lunch">
+                  Lunch
+                </option>
+
+                <option value="Dinner">
+                  Dinner
+                </option>
+              </select>
+
+            </div>
+
+            <div className="forecast-field">
+
+              <label>
+                <CalendarDays
+                  size={15}
+                />
+
+                Day Type
+              </label>
+
+              <select
+                value={dayType}
+                onChange={(event) => {
+                  setDayType(
+                    event.target.value
+                  );
+                  resetPrediction();
+                }}
+              >
+                <option value="regular">
+                  Regular Day
+                </option>
+
+                <option value="exam">
+                  Exam Day
+                </option>
+
+                <option value="holiday">
+                  Holiday
+                </option>
+              </select>
+
+            </div>
+
+            <div className="forecast-field">
+
+              <label>
+                <Users size={15} />
+
+                Campus Population
+              </label>
+
+              <input
+                type="number"
+                min="1"
+                value={
+                  campusPopulation
+                }
+                onChange={(event) => {
+                  setCampusPopulation(
+                    event.target.value
+                  );
+                  resetPrediction();
+                }}
+              />
+
+            </div>
+
+          </div>
+
+          <label className="festival-toggle">
+
+            <input
+              type="checkbox"
+              checked={isFestival}
+              onChange={(event) => {
+                setIsFestival(
+                  event.target.checked
+                );
+                resetPrediction();
+              }}
+            />
+
+            <span className="custom-checkbox">
+              {isFestival && (
+                <CheckCircle2
+                  size={14}
+                />
+              )}
+            </span>
+
+            <span>
+              Festival / special
+              campus event
+            </span>
+
+          </label>
+
+        </section>
+
+        {/* =================================================
+            WEATHER + HISTORY
+            ================================================= */}
+
+        <section className="forecast-info-grid">
+
+          {/* WEATHER */}
+
+          <div className="forecast-info-card">
+
+            <div className="info-card-header">
+
+              <div className="info-card-icon weather-icon">
+                {getWeatherIcon(
+                  weather?.category
+                )}
               </div>
-
-            </section>
-
-          )}
-
-
-          {/* =================================================
-              HOW IT WORKS
-          ================================================== */}
-
-          <section className="how-section">
-
-            <div className="section-heading">
 
               <div>
+                <span>
+                  OPEN-METEO
+                </span>
 
-                <div className="section-eyebrow">
-                  <Sparkles size={15} />
-                  Forecast Pipeline
-                </div>
-
-                <h2>
-                  How the prediction works
-                </h2>
-
+                <h3>
+                  Weather Conditions
+                </h3>
               </div>
 
             </div>
 
-
-            <div className="pipeline-grid">
-
-              <PipelineStep
-                number="01"
-                title="Calendar"
-                description="Date, weekday and academic day type."
-                icon={CalendarDays}
+            {weatherLoading ? (
+              <LoadingBox
+                text="Loading weather..."
               />
-
-              <PipelineArrow />
-
-              <PipelineStep
-                number="02"
-                title="Weather"
-                description="Temperature, rain and precipitation."
-                icon={CloudRain}
+            ) : weatherError ? (
+              <MiniError
+                text={weatherError}
               />
+            ) : weather ? (
+              <div className="weather-content">
 
-              <PipelineArrow />
+                <div className="weather-main">
 
-              <PipelineStep
-                number="03"
-                title="ML Model"
-                description="XGBoost estimates expected demand."
-                icon={Sparkles}
-              />
+                  <strong>
+                    {Math.round(
+                      Number(
+                        weather.temperature
+                      )
+                    )}
+                    °C
+                  </strong>
 
-              <PipelineArrow />
+                  <span>
+                    {weather.description}
+                  </span>
 
-              <PipelineStep
-                number="04"
-                title="Preparation"
-                description="Recommended cooking and ingredients."
-                icon={Utensils}
-              />
+                </div>
+
+                <div className="weather-stats">
+
+                  <div>
+                    <Thermometer
+                      size={14}
+                    />
+
+                    <span>
+                      {Math.round(
+                        Number(
+                          weather.minTemperature
+                        )
+                      )}
+                      °C –{" "}
+                      {Math.round(
+                        Number(
+                          weather.maxTemperature
+                        )
+                      )}
+                      °C
+                    </span>
+                  </div>
+
+                  <div>
+                    <CloudRain
+                      size={14}
+                    />
+
+                    <span>
+                      {formatDecimal(
+                        weather.rainfallMm,
+                        1
+                      )}{" "}
+                      mm rain
+                    </span>
+                  </div>
+
+                  <div>
+                    {getWeatherIcon(
+                      weather.category
+                    )}
+
+                    <span>
+                      {weather.category ||
+                        "normal"}
+                    </span>
+                  </div>
+
+                </div>
+
+              </div>
+            ) : (
+              <div className="forecast-empty-small">
+                Select a date to
+                load weather.
+              </div>
+            )}
+
+          </div>
+
+          {/* HISTORY */}
+
+          <div className="forecast-info-card">
+
+            <div className="info-card-header">
+
+              <div className="info-card-icon history-icon">
+                <Database
+                  size={20}
+                />
+              </div>
+
+              <div>
+                <span>
+                  FIREBASE
+                </span>
+
+                <h3>
+                  Historical Demand
+                </h3>
+              </div>
 
             </div>
 
-          </section>
+            {historyLoading ? (
+              <LoadingBox
+                text="Loading meal history..."
+              />
+            ) : historyError ? (
+              <MiniError
+                text={historyError}
+              />
+            ) : (
+              <>
 
+                <div className="history-summary">
 
-          {/* =================================================
-              MODEL NOTE
-          ================================================== */}
+                  <div>
+                    <strong>
+                      {formatNumber(
+                        historicalStats.totalRecords
+                      )}
+                    </strong>
 
-          <section className="model-note">
+                    <span>
+                      {mealType}
+                      {" "}
+                      records
+                    </span>
+                  </div>
 
-            <div className="model-note-icon">
-              <Wind size={21} />
+                  <div>
+                    <strong>
+                      {historicalStats.average !==
+                      null
+                        ? formatNumber(
+                            Math.round(
+                              historicalStats.average
+                            )
+                          )
+                        : "—"}
+                    </strong>
+
+                    <span>
+                      average demand
+                    </span>
+                  </div>
+
+                </div>
+
+                <div className="history-feature-grid">
+
+                  <HistoryFeature
+                    label="Lag 1"
+                    value={
+                      historicalStats.lag_1
+                    }
+                  />
+
+                  <HistoryFeature
+                    label="Lag 7"
+                    value={
+                      historicalStats.lag_7
+                    }
+                  />
+
+                  <HistoryFeature
+                    label="Lag 14"
+                    value={
+                      historicalStats.lag_14
+                    }
+                  />
+
+                  <HistoryFeature
+                    label="Rolling 7"
+                    value={
+                      historicalStats.rolling_7
+                    }
+                  />
+
+                  <HistoryFeature
+                    label="Rolling 14"
+                    value={
+                      historicalStats.rolling_14
+                    }
+                  />
+
+                  <HistoryFeature
+                    label="Rolling 30"
+                    value={
+                      historicalStats.rolling_30
+                    }
+                  />
+
+                </div>
+
+              </>
+            )}
+
+          </div>
+
+        </section>
+
+        {/* =================================================
+            DATA READINESS
+            ================================================= */}
+
+        <section className="feature-status-card">
+
+          <div className="feature-status-left">
+
+            <div
+              className={`feature-status-icon ${
+                featureReadiness.hasThirty
+                  ? "ready"
+                  : featureReadiness.hasHistory
+                  ? "partial"
+                  : "empty"
+              }`}
+            >
+              {featureReadiness.hasThirty ? (
+                <CheckCircle2
+                  size={20}
+                />
+              ) : featureReadiness.hasHistory ? (
+                <Database
+                  size={20}
+                />
+              ) : (
+                <AlertTriangle
+                  size={20}
+                />
+              )}
             </div>
 
             <div>
 
               <strong>
-                Forecast Engine
+                Historical feature
+                readiness
               </strong>
 
               <p>
-                This page sends the selected date, meal type,
-                academic day type and Open-Meteo weather data
-                to the XGBoost ML API.
+                {featureReadiness.hasThirty
+                  ? "30+ historical records are available. The model has enough history for all lag and rolling windows."
+                  : featureReadiness.hasHistory
+                  ? `${historicalStats.totalRecords} historical records are available. Missing longer windows will use the ML service fallback values.`
+                  : "No historical records were found. The ML service will use its fallback feature values."}
               </p>
 
             </div>
 
+          </div>
+
+          <div
+            className={`feature-status-pill ${
+              featureReadiness.hasThirty
+                ? "ready"
+                : featureReadiness.hasHistory
+                ? "partial"
+                : "empty"
+            }`}
+          >
+            {featureReadiness.hasThirty
+              ? "Ready"
+              : featureReadiness.hasHistory
+              ? "Partial Data"
+              : "No History"}
+          </div>
+
+        </section>
+
+        {/* =================================================
+            STEP 2 GENERATE
+            ================================================= */}
+
+        <section className="generate-section">
+
+          <div className="generate-content">
+
+            <div className="section-number dark">
+              02
+            </div>
+
+            <div>
+              <span>
+                AI PREDICTION
+              </span>
+
+              <h3>
+                Generate Demand Forecast
+              </h3>
+
+              <p>
+                XGBoost combines
+                calendar, weather and
+                historical demand
+                features.
+              </p>
+            </div>
+
+          </div>
+
+          <button
+            className="generate-button"
+            onClick={
+              handleGenerateForecast
+            }
+            disabled={!canGenerate}
+          >
+            {predictionLoading ? (
+              <>
+                <Loader2
+                  size={19}
+                  className="spin"
+                />
+
+                Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles size={19} />
+
+                Generate AI Forecast
+              </>
+            )}
+          </button>
+
+        </section>
+
+        {/* =================================================
+            PREDICTION RESULT
+            ================================================= */}
+
+        {prediction && (
+          <section className="prediction-result">
+
+            <div className="prediction-result-header">
+
+              <div>
+
+                <span className="forecast-eyebrow">
+                  STEP 03 · AI RESULT
+                </span>
+
+                <h3>
+                  {mealType} demand
+                  forecast
+                </h3>
+
+                <p>
+                  {date} ·{" "}
+                  {getDayTypeLabel(
+                    dayType
+                  )}
+                </p>
+
+              </div>
+
+              <div className="prediction-result-status">
+
+                <div className="prediction-success">
+                  <CheckCircle2
+                    size={16}
+                  />
+
+                  Forecast Ready
+                </div>
+
+                {predictionSaving && (
+                  <div className="prediction-save-status saving">
+                    <Loader2
+                      size={14}
+                      className="spin"
+                    />
+
+                    Saving to Firebase
+                  </div>
+                )}
+
+                {predictionSaved && (
+                  <div className="prediction-save-status saved">
+                    <CheckCircle2
+                      size={14}
+                    />
+
+                    Saved to Firebase
+                  </div>
+                )}
+
+                {predictionSaveError && (
+                  <div className="prediction-save-status save-error">
+                    <AlertTriangle
+                      size={14}
+                    />
+
+                    Save failed
+                  </div>
+                )}
+
+              </div>
+
+            </div>
+
+            {/* SAVE WARNING */}
+
+            {predictionSaveError && (
+              <div className="save-warning">
+
+                <AlertTriangle
+                  size={17}
+                />
+
+                <div>
+                  <strong>
+                    Forecast generated
+                  </strong>
+
+                  <p>
+                    {predictionSaveError}
+                  </p>
+                </div>
+
+              </div>
+            )}
+
+            {/* MAIN NUMBERS */}
+
+            <div className="prediction-main-grid">
+
+              <div className="prediction-number-card primary">
+
+                <div className="prediction-number-icon">
+                  <Users size={22} />
+                </div>
+
+                <span>
+                  Predicted Meals
+                </span>
+
+                <strong>
+                  {formatNumber(
+                    prediction.predicted_meals
+                  )}
+                </strong>
+
+                <small>
+                  Expected student
+                  demand
+                </small>
+
+              </div>
+
+              <div className="prediction-number-card recommended">
+
+                <div className="prediction-number-icon">
+                  <ChefHat size={22} />
+                </div>
+
+                <span>
+                  Recommended Cooking
+                </span>
+
+                <strong>
+                  {formatNumber(
+                    prediction.recommended_cooking ||
+                      prediction.predicted_meals
+                  )}
+                </strong>
+
+                <small>
+                  Includes 5%
+                  preparation buffer
+                </small>
+
+              </div>
+
+            </div>
+
+            {/* CONTEXT */}
+
+            <div className="prediction-context">
+
+              <ContextItem
+                icon={getWeatherIcon(
+                  weather?.category
+                )}
+                label="Weather"
+                value={`${Math.round(
+                  Number(
+                    weather?.temperature ??
+                      0
+                  )
+                )}°C`}
+              />
+
+              <ContextItem
+                icon={
+                  <Database
+                    size={17}
+                  />
+                }
+                label="History"
+                value={`${formatNumber(
+                  history.length
+                )} records`}
+              />
+
+              <ContextItem
+                icon={
+                  <CalendarDays
+                    size={17}
+                  />
+                }
+                label="Day Type"
+                value={getDayTypeLabel(
+                  dayType
+                )}
+              />
+
+              <ContextItem
+                icon={
+                  <Users
+                    size={17}
+                  />
+                }
+                label="Population"
+                value={formatNumber(
+                  campusPopulation
+                )}
+              />
+
+            </div>
+
+            {/* INGREDIENTS */}
+
+            <div className="ingredients-section">
+
+              <div className="result-section-heading">
+
+                <div className="result-heading-icon">
+                  <Utensils
+                    size={17}
+                  />
+                </div>
+
+                <div>
+                  <h4>
+                    Ingredient Requirement
+                  </h4>
+
+                  <p>
+                    Estimated quantities
+                    for the recommended
+                    cooking amount.
+                  </p>
+                </div>
+
+              </div>
+
+              <div className="ingredients-grid">
+
+                {Object.entries(
+                  prediction.ingredients ||
+                    {}
+                ).length > 0 ? (
+                  Object.entries(
+                    prediction.ingredients ||
+                      {}
+                  ).map(
+                    (
+                      [
+                        ingredient,
+                        amount,
+                      ]
+                    ) => (
+                      <div
+                        className="ingredient-item"
+                        key={ingredient}
+                      >
+
+                        <div className="ingredient-icon">
+                          <Utensils
+                            size={15}
+                          />
+                        </div>
+
+                        <div>
+                          <span>
+                            {ingredient}
+                          </span>
+
+                          <strong>
+                            {formatDecimal(
+                              amount,
+                              2
+                            )}{" "}
+                            kg
+                          </strong>
+                        </div>
+
+                      </div>
+                    )
+                  )
+                ) : (
+                  <div className="forecast-empty-small">
+                    No ingredient data
+                    was returned by
+                    the ML API.
+                  </div>
+                )}
+
+              </div>
+
+            </div>
+
+            {/* FEATURES */}
+
+            <div className="used-features-section">
+
+              <div className="result-section-heading">
+
+                <div className="result-heading-icon">
+                  <Database
+                    size={17}
+                  />
+                </div>
+
+                <div>
+                  <h4>
+                    Historical Features
+                    Used
+                  </h4>
+
+                  <p>
+                    Values supplied to
+                    the XGBoost
+                    prediction pipeline.
+                  </p>
+                </div>
+
+              </div>
+
+              <div className="used-features-grid">
+
+                <FeatureValue
+                  label="Lag 1"
+                  value={
+                    prediction
+                      .historical_features
+                      ?.lag_1
+                  }
+                />
+
+                <FeatureValue
+                  label="Lag 7"
+                  value={
+                    prediction
+                      .historical_features
+                      ?.lag_7
+                  }
+                />
+
+                <FeatureValue
+                  label="Lag 14"
+                  value={
+                    prediction
+                      .historical_features
+                      ?.lag_14
+                  }
+                />
+
+                <FeatureValue
+                  label="Rolling 7"
+                  value={
+                    prediction
+                      .historical_features
+                      ?.rolling_7
+                  }
+                />
+
+                <FeatureValue
+                  label="Rolling 14"
+                  value={
+                    prediction
+                      .historical_features
+                      ?.rolling_14
+                  }
+                />
+
+                <FeatureValue
+                  label="Rolling 30"
+                  value={
+                    prediction
+                      .historical_features
+                      ?.rolling_30
+                  }
+                />
+
+              </div>
+
+            </div>
+
+            {/* MODEL */}
+
+            <div className="model-information">
+
+              <div className="model-information-left">
+
+                <div className="model-icon">
+                  <BrainCircuit
+                    size={18}
+                  />
+                </div>
+
+                <div>
+                  <strong>
+                    {prediction.model ||
+                      "XGBoost"}
+                  </strong>
+
+                  <p>
+                    Prediction generated
+                    by the ReFeed ML
+                    API.
+                  </p>
+                </div>
+
+              </div>
+
+              <div className="model-info-badge">
+                <CheckCircle2
+                  size={14}
+                />
+
+                API Connected
+              </div>
+
+            </div>
+
+            {/* ACTIONS */}
+
+            <div className="prediction-actions">
+
+              <button
+                className="secondary-forecast-button"
+                onClick={() => {
+                  resetPrediction();
+                  window.scrollTo({
+                    top: 0,
+                    behavior:
+                      "smooth",
+                  });
+                }}
+              >
+                <RefreshCw
+                  size={16}
+                />
+
+                Modify Forecast
+              </button>
+
+              <button
+                className="continue-button"
+                onClick={
+                  handleContinuePreparation
+                }
+              >
+                Continue to Preparation
+
+                <ArrowRight
+                  size={17}
+                />
+              </button>
+
+            </div>
+
           </section>
+        )}
+
+        {/* =================================================
+            EMPTY STATE
+            ================================================= */}
+
+        {!prediction &&
+          !predictionLoading && (
+            <section className="forecast-empty-state">
+
+              <div className="empty-state-icon">
+                <BrainCircuit
+                  size={28}
+                />
+              </div>
+
+              <span>
+                READY
+              </span>
+
+              <h3>
+                Generate your first
+                forecast
+              </h3>
+
+              <p>
+                Configure the meal
+                details, check the
+                weather and run the
+                XGBoost model.
+              </p>
+
+              <div className="empty-pipeline">
+
+                <PipelineStep
+                  number="1"
+                  title="History"
+                />
+
+                <span>
+                  →
+                </span>
+
+                <PipelineStep
+                  number="2"
+                  title="Weather"
+                />
+
+                <span>
+                  →
+                </span>
+
+                <PipelineStep
+                  number="3"
+                  title="XGBoost"
+                />
+
+                <span>
+                  →
+                </span>
+
+                <PipelineStep
+                  number="4"
+                  title="Preparation"
+                />
+
+              </div>
+
+            </section>
+          )}
+
+        {/* =================================================
+            FOOTER NAVIGATION
+            ================================================= */}
+
+        <div className="forecast-bottom-navigation">
+
+          <button
+            onClick={() =>
+              navigate(
+                "/dashboard"
+              )
+            }
+          >
+            <ArrowLeft
+              size={15}
+            />
+
+            Back to Dashboard
+          </button>
+
+          {prediction && (
+            <button
+              className="bottom-primary"
+              onClick={
+                handleContinuePreparation
+              }
+            >
+              Continue to Preparation
+
+              <ArrowRight
+                size={15}
+              />
+            </button>
+          )}
 
         </div>
 
       </main>
+    </div>
+  );
+}
+
+/* =========================================================
+   SMALL COMPONENTS
+   ========================================================= */
+
+function LoadingBox({
+  text,
+}) {
+  return (
+    <div className="forecast-loading-small">
+      <Loader2
+        size={18}
+        className="spin"
+      />
+
+      {text}
+    </div>
+  );
+}
+
+function MiniError({
+  text,
+}) {
+  return (
+    <div className="forecast-mini-error">
+      <AlertTriangle
+        size={17}
+      />
+
+      <span>
+        {text}
+      </span>
+    </div>
+  );
+}
+
+function HistoryFeature({
+  label,
+  value,
+}) {
+  const number =
+    Number(value);
+
+  return (
+    <div className="history-feature">
+
+      <span>
+        {label}
+      </span>
+
+      <strong>
+        {Number.isFinite(number)
+          ? Math.round(number)
+          : "—"}
+      </strong>
 
     </div>
   );
 }
 
+function FeatureValue({
+  label,
+  value,
+}) {
+  const number =
+    Number(value);
 
-// ------------------------------------------------------------
-// Pipeline Step
-// ------------------------------------------------------------
+  return (
+    <div className="used-feature">
+
+      <span>
+        {label}
+      </span>
+
+      <strong>
+        {Number.isFinite(number)
+          ? Math.round(number)
+          : "Fallback"}
+      </strong>
+
+    </div>
+  );
+}
+
+function ContextItem({
+  icon,
+  label,
+  value,
+}) {
+  return (
+    <div className="context-item">
+
+      <div className="context-item-icon">
+        {icon}
+      </div>
+
+      <div>
+        <span>
+          {label}
+        </span>
+
+        <strong>
+          {value}
+        </strong>
+      </div>
+
+    </div>
+  );
+}
+
+function WorkflowStep({
+  number,
+  title,
+  active = false,
+}) {
+  return (
+    <div
+      className={`workflow-step ${
+        active ? "active" : ""
+      }`}
+    >
+      <span>
+        {number}
+      </span>
+
+      <strong>
+        {title}
+      </strong>
+    </div>
+  );
+}
+
+function WorkflowLine() {
+  return (
+    <div className="workflow-line" />
+  );
+}
 
 function PipelineStep({
   number,
   title,
-  description,
-  icon: Icon,
 }) {
   return (
     <div className="pipeline-step">
 
-      <div className="pipeline-number">
+      <span>
         {number}
-      </div>
+      </span>
 
-      <div className="pipeline-icon">
-        <Icon size={21} />
-      </div>
+      <strong>
+        {title}
+      </strong>
 
-      <div>
-
-        <h3>
-          {title}
-        </h3>
-
-        <p>
-          {description}
-        </p>
-
-      </div>
-
-    </div>
-  );
-}
-
-
-// ------------------------------------------------------------
-// Pipeline Arrow
-// ------------------------------------------------------------
-
-function PipelineArrow() {
-  return (
-    <div className="pipeline-arrow">
-      <ArrowRight size={20} />
     </div>
   );
 }

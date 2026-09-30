@@ -16,6 +16,10 @@ import {
 
 import app from "./config";
 
+// ================================
+// FIREBASE SERVICES
+// ================================
+
 const auth = getAuth(app);
 const db = getFirestore(app);
 
@@ -45,15 +49,16 @@ export const registerUser = async ({
   userType,
 }) => {
   // Create Firebase Authentication account
-  const userCredential = await createUserWithEmailAndPassword(
-    auth,
-    email,
-    password
-  );
+  const userCredential =
+    await createUserWithEmailAndPassword(
+      auth,
+      email,
+      password
+    );
 
   const user = userCredential.user;
 
-  // Add display name to Firebase Auth profile
+  // Add display name to Firebase Authentication profile
   await updateProfile(user, {
     displayName: name,
   });
@@ -61,11 +66,12 @@ export const registerUser = async ({
   // Save additional user information in Firestore
   await setDoc(doc(db, "users", user.uid), {
     uid: user.uid,
-    name: name,
-    email: email,
-    phone: phone,
-    userType: userType,
+    name,
+    email,
+    phone,
+    userType,
     createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   });
 
   return user;
@@ -86,5 +92,9 @@ export const logoutUser = async () => {
 export const observeAuthState = (callback) => {
   return onAuthStateChanged(auth, callback);
 };
+
+// ================================
+// EXPORT FIREBASE SERVICES
+// ================================
 
 export { auth, db };
