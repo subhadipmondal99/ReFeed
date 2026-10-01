@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import {
   Eye,
@@ -9,6 +9,14 @@ import {
   HeartHandshake,
   UtensilsCrossed,
   AlertCircle,
+  CheckCircle2,
+  ShieldCheck,
+  Sparkles,
+  Leaf,
+  ArrowRight,
+  BrainCircuit,
+  TrendingUp,
+  Recycle,
 } from "lucide-react";
 
 import { loginUser, db } from "../firebase/auth";
@@ -26,19 +34,20 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const [showPassword, setShowPassword] =
-    useState(false);
-
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const handleLogin = async (event) => {
     event.preventDefault();
 
     setError("");
+    setSuccess("");
 
     if (!email.trim()) {
-      setError("Please enter your email.");
+      setError("Please enter your email address.");
       return;
     }
 
@@ -50,98 +59,75 @@ export default function Login() {
     try {
       setLoading(true);
 
-      /*
-      |--------------------------------------------------------------------------
-      | FIREBASE AUTH LOGIN
-      |--------------------------------------------------------------------------
-      */
-
+      // -----------------------------------------
+      // FIREBASE LOGIN
+      // -----------------------------------------
       const user = await loginUser(
         email.trim(),
         password
       );
 
-      /*
-      |--------------------------------------------------------------------------
-      | GET USER ROLE FROM FIRESTORE
-      |--------------------------------------------------------------------------
-      |
-      | users/{uid}
-      |
-      | userType:
-      |   "canteen"
-      |   "ngo"
-      |
-      */
-
+      // -----------------------------------------
+      // GET USER ROLE
+      // -----------------------------------------
       const userRef = doc(
         db,
         "users",
         user.uid
       );
 
-      const userSnapshot =
-        await getDoc(userRef);
+      const userSnapshot = await getDoc(userRef);
 
       if (!userSnapshot.exists()) {
         setError(
-          "Your account profile was not found."
+          "Your account profile was not found. Please contact the administrator."
         );
-
         return;
       }
 
-      const userData =
-        userSnapshot.data();
+      const userData = userSnapshot.data();
 
-      const userType =
-        String(
-          userData.userType ||
-            userData.role ||
-            ""
-        )
-          .trim()
-          .toLowerCase();
+      const userType = String(
+        userData.userType ||
+          userData.role ||
+          ""
+      )
+        .trim()
+        .toLowerCase();
 
-      /*
-      |--------------------------------------------------------------------------
-      | CANTEEN LOGIN
-      |--------------------------------------------------------------------------
-      */
+      setSuccess("Login successful. Redirecting...");
 
+      // -----------------------------------------
+      // CANTEEN
+      // -----------------------------------------
       if (
         userType === "canteen" ||
         userType === "admin"
       ) {
-        navigate("/dashboard", {
-          replace: true,
-        });
+        setTimeout(() => {
+          navigate("/dashboard", {
+            replace: true,
+          });
+        }, 500);
 
         return;
       }
 
-      /*
-      |--------------------------------------------------------------------------
-      | NGO LOGIN
-      |--------------------------------------------------------------------------
-      */
-
+      // -----------------------------------------
+      // NGO
+      // -----------------------------------------
       if (
         userType === "ngo" ||
         userType === "ngos"
       ) {
-        navigate("/donations", {
-          replace: true,
-        });
+        setTimeout(() => {
+          navigate("/donations", {
+            replace: true,
+          });
+        }, 500);
 
         return;
       }
-
-      /*
-      |--------------------------------------------------------------------------
-      | UNKNOWN ROLE
-      |--------------------------------------------------------------------------
-      */
 
       setError(
         "Your account role is not configured. Please contact the administrator."
@@ -187,6 +173,14 @@ export default function Login() {
           "Please enter a valid email address.";
       }
 
+      if (
+        loginError?.code ===
+        "auth/too-many-requests"
+      ) {
+        message =
+          "Too many login attempts. Please try again later.";
+      }
+
       setError(message);
     } finally {
       setLoading(false);
@@ -194,326 +188,692 @@ export default function Login() {
   };
 
   return (
-    <div className="login-page">
+    <main className="login-page">
 
-      <div className="login-container">
+      {/* =====================================================
+          LEFT VISUAL SECTION
+      ====================================================== */}
 
-        <div className="login-card">
+      <section className="login-visual">
 
-          {/* LOGO */}
+        <div className="visual-grid" />
 
-          <div className="login-logo">
-            <div className="login-logo-icon">
-              <HeartHandshake size={28} />
+        <div className="visual-glow visual-glow-1" />
+        <div className="visual-glow visual-glow-2" />
+        <div className="visual-glow visual-glow-3" />
+
+        <div className="visual-inner">
+
+          {/* BRAND */}
+
+          <div className="visual-brand">
+
+            <div className="brand-logo">
+              <HeartHandshake size={27} />
             </div>
 
-            <div>
-              <h1>ReFeed</h1>
-
-              <p>
-                Food Rescue Platform
-              </p>
-            </div>
-          </div>
-
-          {/* TITLE */}
-
-          <div className="login-heading">
-
-            <h2>
-              Welcome back
-            </h2>
-
-            <p>
-              Login to continue to your
-              ReFeed workspace.
-            </p>
-
-          </div>
-
-          {/* ERROR */}
-
-          {error && (
-            <div
-              className="login-error"
-              style={{
-                display: "flex",
-                gap: "10px",
-                alignItems: "flex-start",
-                padding: "12px 14px",
-                marginBottom: "18px",
-                borderRadius: "12px",
-                background:
-                  "rgba(239,68,68,0.10)",
-                border:
-                  "1px solid rgba(239,68,68,0.25)",
-                color: "#fecaca",
-                fontSize: "14px",
-              }}
-            >
-              <AlertCircle
-                size={18}
-                style={{
-                  flexShrink: 0,
-                }}
-              />
-
+            <div className="brand-text">
+              <strong>ReFeed</strong>
               <span>
-                {error}
+                Campus Food Rescue Platform
               </span>
             </div>
-          )}
 
-          {/* FORM */}
+          </div>
 
-          <form
-            onSubmit={handleLogin}
-            className="login-form"
-          >
+          {/* MAIN */}
 
-            {/* EMAIL */}
+          <div className="visual-main">
 
-            <div className="login-field">
+            {/* HERO COPY */}
 
-              <label>
-                Email address
-              </label>
+            <div className="visual-copy">
 
-              <input
-                type="email"
-                value={email}
-                onChange={(event) =>
-                  setEmail(event.target.value)
-                }
-                placeholder="you@example.com"
-                autoComplete="email"
-                disabled={loading}
-              />
+              <div className="ai-badge">
+                <div className="ai-badge-icon">
+                  <Sparkles size={13} />
+                </div>
 
-            </div>
+                AI POWERED FOOD MANAGEMENT
+              </div>
 
-            {/* PASSWORD */}
+              <h1>
+                Feed more.
+                <br />
+                Waste <span>less.</span>
+              </h1>
 
-            <div className="login-field">
+              <p className="visual-description">
+                ReFeed uses intelligent demand forecasting
+                to help campus canteens prepare the right
+                amount of food and rescue surplus meals
+                through nearby NGOs.
+              </p>
 
-              <label>
-                Password
-              </label>
+              {/* PROCESS */}
 
-              <div
-                style={{
-                  position: "relative",
-                }}
-              >
+              <div className="process-list">
 
-                <input
-                  type={
-                    showPassword
-                      ? "text"
-                      : "password"
-                  }
-                  value={password}
-                  onChange={(event) =>
-                    setPassword(
-                      event.target.value
-                    )
-                  }
-                  placeholder="Enter your password"
-                  autoComplete="current-password"
-                  disabled={loading}
-                  style={{
-                    paddingRight: "48px",
-                  }}
-                />
+                <div className="process-step active">
+                  <div className="process-number">
+                    <BrainCircuit size={15} />
+                  </div>
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    setShowPassword(
-                      !showPassword
-                    )
-                  }
-                  disabled={loading}
-                  style={{
-                    position: "absolute",
-                    right: "12px",
-                    top: "50%",
-                    transform:
-                      "translateY(-50%)",
-                    border: "none",
-                    background: "transparent",
-                    color: "#94a3b8",
-                    cursor: "pointer",
-                  }}
-                >
-                  {showPassword ? (
-                    <EyeOff size={19} />
-                  ) : (
-                    <Eye size={19} />
-                  )}
-                </button>
+                  <div>
+                    <strong>
+                      Predict demand
+                    </strong>
+
+                    <span>
+                      AI forecasts upcoming meal demand
+                    </span>
+                  </div>
+                </div>
+
+                <div className="process-connector" />
+
+                <div className="process-step">
+                  <div className="process-number">
+                    <UtensilsCrossed size={15} />
+                  </div>
+
+                  <div>
+                    <strong>
+                      Prepare smarter
+                    </strong>
+
+                    <span>
+                      Calculate meals and ingredients
+                    </span>
+                  </div>
+                </div>
+
+                <div className="process-connector" />
+
+                <div className="process-step">
+                  <div className="process-number">
+                    <Recycle size={15} />
+                  </div>
+
+                  <div>
+                    <strong>
+                      Rescue surplus
+                    </strong>
+
+                    <span>
+                      Connect extra meals with NGOs
+                    </span>
+                  </div>
+                </div>
 
               </div>
 
             </div>
 
-            {/* LOGIN BUTTON */}
+            {/* ANALYTICS CARDS */}
 
-            <button
-              type="submit"
-              className="login-submit"
-              disabled={loading}
-            >
+            <div className="analytics-column">
 
-              {loading ? (
-                <>
-                  <Loader2
-                    size={19}
-                    className="spin"
-                  />
+              {/* FORECAST */}
 
-                  Signing in...
-                </>
-              ) : (
-                <>
-                  <LogIn size={19} />
+              <div className="analytics-card forecast-card">
 
-                  Login
-                </>
-              )}
+                <div className="analytics-card-top">
 
-            </button>
+                  <div className="analytics-icon analytics-blue">
+                    <TrendingUp size={16} />
+                  </div>
 
-          </form>
+                  <div className="analytics-title">
 
-          {/* ROLE INFO */}
+                    <span>
+                      AI FORECAST
+                    </span>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "1fr 1fr",
-              gap: "10px",
-              marginTop: "22px",
-            }}
-          >
+                    <strong>
+                      Today's demand
+                    </strong>
 
-            <div
-              style={{
-                padding: "12px",
-                borderRadius: "12px",
-                background:
-                  "rgba(16,185,129,0.07)",
-                border:
-                  "1px solid rgba(16,185,129,0.12)",
-              }}
-            >
+                  </div>
 
-              <UtensilsCrossed
-                size={18}
-                color="#34d399"
-              />
+                  <div className="live-status">
+                    <span />
+                    Live
+                  </div>
 
-              <strong
-                style={{
-                  display: "block",
-                  marginTop: "6px",
-                  color: "#d1fae5",
-                  fontSize: "13px",
-                }}
-              >
-                Canteen
-              </strong>
+                </div>
 
-              <span
-                style={{
-                  display: "block",
-                  marginTop: "3px",
-                  color: "#82968d",
-                  fontSize: "11px",
-                }}
-              >
-                Dashboard
-              </span>
+                <div className="chart-area">
 
-            </div>
+                  <div className="chart-bars">
+                    <i style={{ height: "35%" }} />
+                    <i style={{ height: "52%" }} />
+                    <i style={{ height: "43%" }} />
+                    <i style={{ height: "68%" }} />
+                    <i style={{ height: "58%" }} />
+                    <i style={{ height: "82%" }} />
+                    <i style={{ height: "72%" }} />
+                    <i style={{ height: "92%" }} />
+                  </div>
 
-            <div
-              style={{
-                padding: "12px",
-                borderRadius: "12px",
-                background:
-                  "rgba(16,185,129,0.07)",
-                border:
-                  "1px solid rgba(16,185,129,0.12)",
-              }}
-            >
+                </div>
 
-              <HeartHandshake
-                size={18}
-                color="#34d399"
-              />
+                <div className="forecast-result">
+                  <span>
+                    Predicted meals
+                  </span>
 
-              <strong
-                style={{
-                  display: "block",
-                  marginTop: "6px",
-                  color: "#d1fae5",
-                  fontSize: "13px",
-                }}
-              >
-                NGO
-              </strong>
+                  <strong>
+                    742 meals
+                  </strong>
+                </div>
 
-              <span
-                style={{
-                  display: "block",
-                  marginTop: "3px",
-                  color: "#82968d",
-                  fontSize: "11px",
-                }}
-              >
-                Pickup requests
-              </span>
+              </div>
+
+              {/* WASTE */}
+
+              <div className="analytics-card waste-card">
+
+                <div className="analytics-icon analytics-green">
+                  <Leaf size={16} />
+                </div>
+
+                <div className="waste-content">
+
+                  <span>
+                    WASTE REDUCTION
+                  </span>
+
+                  <strong>
+                    28%
+                  </strong>
+
+                  <div className="waste-progress">
+                    <span />
+                  </div>
+
+                </div>
+
+                <div className="waste-trend">
+                  <TrendingUp size={15} />
+                </div>
+
+              </div>
+
+              {/* NGO */}
+
+              <div className="analytics-card ngo-card">
+
+                <div className="analytics-icon analytics-cyan">
+                  <HeartHandshake size={16} />
+                </div>
+
+                <div className="ngo-content">
+
+                  <span>
+                    FOOD RESCUE
+                  </span>
+
+                  <strong>
+                    NGO connected
+                  </strong>
+
+                  <small>
+                    Nearby pickup partner
+                  </small>
+
+                </div>
+
+                <div className="ngo-check">
+                  <CheckCircle2 size={18} />
+                </div>
+
+              </div>
 
             </div>
 
           </div>
 
-          {/* SIGNUP */}
+          {/* MISSION */}
 
-          <div className="login-footer">
+          <div className="mission-card">
+
+            <div className="mission-icon">
+              <Recycle size={18} />
+            </div>
+
+            <div className="mission-content">
+
+              <span>
+                OUR MISSION
+              </span>
+
+              <strong>
+                Turn surplus campus food into meals
+                for people who need them.
+              </strong>
+
+            </div>
+
+            <Leaf
+              className="mission-leaf"
+              size={18}
+            />
+
+          </div>
+
+          {/* FOOTER */}
+
+          <div className="visual-footer">
+
+            <div className="footer-status">
+              <i />
+              ReFeed systems operational
+            </div>
 
             <span>
-              Don't have an account?
+              Predict • Prepare • Rescue • Measure
             </span>
-
-            <Link to="/signup">
-              Create account
-            </Link>
 
           </div>
 
         </div>
 
-      </div>
+      </section>
 
-      <style>{`
-        .spin {
-          animation: loginSpin 1s linear infinite;
-        }
+      {/* =====================================================
+          RIGHT LOGIN SECTION
+      ====================================================== */}
 
-        @keyframes loginSpin {
-          from {
-            transform: rotate(0deg);
-          }
+      <section className="login-panel">
 
-          to {
-            transform: rotate(360deg);
-          }
-        }
-      `}</style>
+        <div className="panel-glow panel-glow-1" />
+        <div className="panel-glow panel-glow-2" />
 
-    </div>
+        <div className="login-container">
+
+          {/* MOBILE BRAND */}
+
+          <div className="mobile-brand">
+
+            <div className="mobile-brand-logo">
+              <HeartHandshake size={25} />
+            </div>
+
+            <div>
+              <strong>ReFeed</strong>
+
+              <span>
+                Food Rescue Platform
+              </span>
+            </div>
+
+          </div>
+
+          {/* LOGIN CARD */}
+
+          <div className="login-card">
+
+            {/* HEADING */}
+
+            <div className="login-heading">
+
+              <div className="login-leaf">
+                <HeartHandshake size={20} />
+              </div>
+
+              <div className="login-eyebrow">
+                WELCOME BACK
+              </div>
+
+              <h2>
+                Sign in to ReFeed
+              </h2>
+
+              <p>
+                Continue managing your campus
+                food rescue workspace.
+              </p>
+
+            </div>
+
+            {/* ERROR */}
+
+            {error && (
+              <div className="form-alert form-alert-error">
+
+                <div className="alert-icon">
+                  <AlertCircle size={13} />
+                </div>
+
+                <span>
+                  {error}
+                </span>
+
+              </div>
+            )}
+
+            {/* SUCCESS */}
+
+            {success && (
+              <div className="form-alert form-alert-success">
+
+                <div className="success-icon">
+                  <CheckCircle2 size={13} />
+                </div>
+
+                <span>
+                  {success}
+                </span>
+
+              </div>
+            )}
+
+            {/* FORM */}
+
+            <form
+              className="login-form"
+              onSubmit={handleLogin}
+            >
+
+              {/* EMAIL */}
+
+              <div className="field">
+
+                <label htmlFor="login-email">
+                  Email address
+                </label>
+
+                <div className="input-box">
+
+                  <span className="field-icon">
+                    <svg
+                      width="17"
+                      height="17"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <rect
+                        x="3"
+                        y="5"
+                        width="18"
+                        height="14"
+                        rx="2"
+                      />
+                      <path d="m3 7 9 6 9-6" />
+                    </svg>
+                  </span>
+
+                  <input
+                    id="login-email"
+                    type="email"
+                    value={email}
+                    onChange={(event) =>
+                      setEmail(
+                        event.target.value
+                      )
+                    }
+                    placeholder="you@example.com"
+                    autoComplete="email"
+                    disabled={loading}
+                  />
+
+                </div>
+
+              </div>
+
+              {/* PASSWORD */}
+
+              <div className="field">
+
+                <label htmlFor="login-password">
+                  Password
+                </label>
+
+                <div className="input-box">
+
+                  <span className="field-icon">
+                    <svg
+                      width="17"
+                      height="17"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <rect
+                        x="4"
+                        y="10"
+                        width="16"
+                        height="10"
+                        rx="2"
+                      />
+                      <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+                    </svg>
+                  </span>
+
+                  <input
+                    id="login-password"
+                    type={
+                      showPassword
+                        ? "text"
+                        : "password"
+                    }
+                    value={password}
+                    onChange={(event) =>
+                      setPassword(
+                        event.target.value
+                      )
+                    }
+                    placeholder="Enter your password"
+                    autoComplete="current-password"
+                    disabled={loading}
+                  />
+
+                  <button
+                    type="button"
+                    className="eye-button"
+                    onClick={() =>
+                      setShowPassword(
+                        (value) => !value
+                      )
+                    }
+                    disabled={loading}
+                    aria-label={
+                      showPassword
+                        ? "Hide password"
+                        : "Show password"
+                    }
+                  >
+                    {showPassword ? (
+                      <EyeOff size={17} />
+                    ) : (
+                      <Eye size={17} />
+                    )}
+                  </button>
+
+                </div>
+
+              </div>
+
+              {/* OPTIONS */}
+
+              <div className="form-options">
+
+                <label className="remember">
+
+                  <input
+                    type="checkbox"
+                  />
+
+                  <span className="checkbox">
+                    <CheckCircle2 size={11} />
+                  </span>
+
+                  Remember me
+
+                </label>
+
+                <button
+                  type="button"
+                  className="forgot"
+                  onClick={() => {
+                    setError(
+                      "Password reset can be added through Firebase Authentication."
+                    );
+                  }}
+                >
+                  Forgot password?
+                </button>
+
+              </div>
+
+              {/* LOGIN BUTTON */}
+
+              <button
+                type="submit"
+                className={`submit-button ${
+                  success ? "success" : ""
+                }`}
+                disabled={loading}
+              >
+
+                {loading ? (
+                  <>
+                    <span className="spinner" />
+                    Signing in...
+                  </>
+                ) : (
+                  <>
+                    <LogIn size={17} />
+
+                    Login
+
+                    <span className="submit-arrow">
+                      <ArrowRight size={15} />
+                    </span>
+                  </>
+                )}
+
+              </button>
+
+            </form>
+
+            {/* ROLE INFORMATION */}
+
+            <div className="role-section">
+
+              <div className="role-heading">
+                <span>
+                  ONE PLATFORM
+                </span>
+
+                <strong>
+                  Different workspace for each role
+                </strong>
+              </div>
+
+              <div className="role-grid">
+
+                {/* CANTEEN */}
+
+                <div className="role-card">
+
+                  <div className="role-icon">
+                    <UtensilsCrossed size={18} />
+                  </div>
+
+                  <div>
+                    <strong>
+                      Canteen
+                    </strong>
+
+                    <span>
+                      Forecast & manage meals
+                    </span>
+                  </div>
+
+                </div>
+
+                {/* NGO */}
+
+                <div className="role-card">
+
+                  <div className="role-icon">
+                    <HeartHandshake size={18} />
+                  </div>
+
+                  <div>
+                    <strong>
+                      NGO
+                    </strong>
+
+                    <span>
+                      Receive pickup requests
+                    </span>
+                  </div>
+
+                </div>
+
+              </div>
+
+            </div>
+
+            {/* SIGNUP */}
+
+            <div className="signup">
+
+              <span>
+                Don't have an account?
+              </span>
+
+              <Link to="/signup">
+                Create account
+                <ArrowRight size={12} />
+              </Link>
+
+            </div>
+
+            {/* SECURITY */}
+
+            <div className="security-note">
+
+              <ShieldCheck size={13} />
+
+              Secure authentication powered by Firebase
+
+            </div>
+
+          </div>
+
+          {/* PANEL FOOTER */}
+
+          <div className="panel-footer">
+
+            <span>
+              ReFeed
+            </span>
+
+            <i />
+
+            <span>
+              Campus Food Rescue
+            </span>
+
+            <i />
+
+            <span>
+              AI Powered
+            </span>
+
+          </div>
+
+        </div>
+
+      </section>
+
+    </main>
   );
 }
