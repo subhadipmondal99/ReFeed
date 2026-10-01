@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+
+import { useNavigate } from "react-router-dom";
+
+import {
+  collection,
+  onSnapshot,
+  query,
+  orderBy,
+} from "firebase/firestore";
 
 import {
   AlertCircle,
@@ -8,12 +16,15 @@ import {
   CheckCircle2,
   Clock3,
   HeartHandshake,
+  Loader2,
   MapPin,
   PackageCheck,
   Phone,
   RefreshCw,
+  ShieldCheck,
   Truck,
   UserRound,
+  XCircle,
 } from "lucide-react";
 
 import {
@@ -21,69 +32,45 @@ import {
   updateDonationStatus,
 } from "../services/donationService";
 
+import { db } from "../firebase/auth";
+
 import "./Donations.css";
+
+
+/* =========================================================
+   STATUS FLOW
+   ========================================================= */
 
 const STATUS_FLOW = [
   "Pickup Pending",
+  "NGO Accepted",
   "Pickup In Progress",
   "Picked Up",
   "Completed",
 ];
 
+
 const STATUS_DESCRIPTIONS = {
   "Pickup Pending":
-    "Waiting for the NGO to confirm and begin pickup.",
+    "A new food rescue request is waiting for NGO confirmation.",
+
+  "NGO Accepted":
+    "The NGO has accepted the pickup request.",
 
   "Pickup In Progress":
-    "The NGO pickup is currently in progress.",
+    "The NGO is currently travelling to collect the rescued food.",
 
   "Picked Up":
-    "The NGO has collected the rescued meals.",
+    "The NGO has collected the rescued meals from the canteen.",
 
   Completed:
-    "The rescue process has been completed successfully.",
+    "The food rescue process has been completed successfully.",
 };
 
-const FALLBACK_DONATION = {
-  id: null,
 
-  date: new Date()
-    .toISOString()
-    .split("T")[0],
-
-  meal_type: "Lunch",
-
-  predicted_meals: 596,
-
-  prepared_meals: 626,
-
-  served_meals: 580,
-
-  surplus_meals: 46,
-
-  pickup_location:
-    "Main Campus Canteen",
-
-  shelf_life: "2 hours",
-
-  shelf_life_minutes: 120,
-
-  status: "Pickup Pending",
-
-  ngo: {
-    id: "ngo-helping-hands",
-    name: "Helping Hands",
-    distance: "1.8 km",
-    distanceKm: 1.8,
-    capacity: 120,
-    phone: "+91 98765 43210",
-    responseTime: "15–20 min",
-  },
-};
-
-/* -------------------------------------------------------------------------- */
-/* Helpers                                                                    */
-/* -------------------------------------------------------------------------- */
+/* =========================================================
+   DATE HELPERS
+   ========================================================= */
 
 const formatDate = (dateValue) => {
   if (!dateValue) {
@@ -95,7 +82,7 @@ const formatDate = (dateValue) => {
   );
 
   if (Number.isNaN(date.getTime())) {
-    return dateValue;
+    return String(dateValue);
   }
 
   return date.toLocaleDateString(
@@ -108,12 +95,6 @@ const formatDate = (dateValue) => {
   );
 };
 
-const getStatusIndex = (status) => {
-  const index =
-    STATUS_FLOW.indexOf(status);
-
-  return index >= 0 ? index : 0;
-};
 
 const getTimestampDate = (value) => {
   if (!value) {
@@ -121,6 +102,7 @@ const getTimestampDate = (value) => {
   }
 
   if (
+    typeof value === "object" &&
     typeof value.toDate === "function"
   ) {
     return value.toDate();
@@ -137,9 +119,9 @@ const getTimestampDate = (value) => {
     : parsed;
 };
 
+
 const formatTimestamp = (value) => {
-  const date =
-    getTimestampDate(value);
+  const date = getTimestampDate(value);
 
   if (!date) {
     return "Not recorded";
@@ -150,42 +132,92 @@ const formatTimestamp = (value) => {
     {
       day: "2-digit",
       month: "short",
+      year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
     }
   );
 };
 
-/* -------------------------------------------------------------------------- */
-/* Component                                                                  */
-/* -------------------------------------------------------------------------- */
+
+/* =========================================================
+   STATUS HELPERS
+   ========================================================= */
+
+const getStatusIndex = (status) => {
+  const index =
+    STATUS_FLOW.indexOf(status);
+
+  return index >= 0 ? index : 0;
+};
+
+
+const normalizeDonation = (record) => {
+  if (!record) {
+    return null;
+  }
+
+  return {
+    ...record,
+
+    ngo:
+      record.ngo || {
+        name: "NGO Partner",
+        phone: "Not available",
+        distance: "—",
+        capacity: 0,
+        responseTime: "—",
+      },
+
+    checklist:
+      record.checklist || {
+        requestSent: true,
+        ngoAccepted:
+          record.accepted === true ||
+          record.status === "NGO Accepted",
+
+        pickupLocationConfirmed:
+          false,
+
+        mealsConfirmed:
+          false,
+
+        pickupStarted:
+          record.status ===
+          "Pickup In Progress",
+
+        foodCollected:
+          record.status ===
+          "Picked Up" ||
+          record.status === "Completed",
+
+        completed:
+          record.status === "Completed",
+      },
+  };
+};
+
+
+/* =========================================================
+   MAIN NGO PAGE
+   ========================================================= */
 
 export default function Donations() {
-  const location = useLocation();
   const navigate = useNavigate();
 
-  const incomingData =
-    location.state || {};
 
-  const incomingDonationId =
-    incomingData.donationId ||
-    incomingData.id ||
-    null;
+  /* =======================================================
+     STATE
+     ======================================================= */
 
-  const [donation, setDonation] =
-    useState(
-      incomingDonationId
-        ? null
-        : {
-            ...FALLBACK_DONATION,
-            ...incomingData,
-          }
-    );
+  const [donations, setDonations] =
+    useState([]);
+
+  const [selectedDonationId, setSelectedDonationId] =
+    useState(null);
 
   const [loading, setLoading] =
-    useState(
-      Boolean(incomingDonationId)
-    );
+    useState(true);
 
   const [refreshing, setRefreshing] =
     useState(false);
@@ -199,66 +231,129 @@ export default function Donations() {
   const [successMessage, setSuccessMessage] =
     useState("");
 
-  /* ------------------------------------------------------------------------ */
-  /* Load donation                                                            */
-  /* ------------------------------------------------------------------------ */
+  const [notificationCount, setNotificationCount] =
+    useState(0);
 
-  const loadDonation = async (
-    showRefresh = false
-  ) => {
-    if (!incomingDonationId) {
-      return;
-    }
 
-    try {
-      if (showRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
-
-      setError("");
-
-      const result =
-        await getDonation(
-          incomingDonationId
-        );
-
-      setDonation(result);
-    } catch (loadError) {
-      console.error(
-        "Donation loading error:",
-        loadError
-      );
-
-      setError(
-        loadError?.message ||
-          "Unable to load the donation record."
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+  /* =======================================================
+     FIREBASE REAL-TIME LISTENER
+     ======================================================= */
 
   useEffect(() => {
-    if (incomingDonationId) {
-      loadDonation();
-    }
-  }, [incomingDonationId]);
+    setLoading(true);
+    setError("");
 
-  /* ------------------------------------------------------------------------ */
-  /* Derived values                                                           */
-  /* ------------------------------------------------------------------------ */
+    const donationsQuery = query(
+      collection(db, "donations"),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsubscribe = onSnapshot(
+      donationsQuery,
+      (snapshot) => {
+        const records =
+          snapshot.docs.map((item) =>
+            normalizeDonation({
+              id: item.id,
+              ...item.data(),
+            })
+          );
+
+        setDonations(records);
+
+        /*
+         * Automatically select newest request
+         * when nothing is selected.
+         */
+
+        setSelectedDonationId(
+          (previousId) => {
+            if (
+              previousId &&
+              records.some(
+                (item) =>
+                  item.id === previousId
+              )
+            ) {
+              return previousId;
+            }
+
+            return records[0]?.id || null;
+          }
+        );
+
+        /*
+         * Count unread/new requests.
+         */
+
+        const unread = records.filter(
+          (item) =>
+            item.notificationStatus ===
+              "Unread" ||
+            item.notificationRead === false ||
+            item.status === "Pickup Pending"
+        ).length;
+
+        setNotificationCount(unread);
+
+        setLoading(false);
+        setRefreshing(false);
+      },
+      (firebaseError) => {
+        console.error(
+          "NGO Firebase listener error:",
+          firebaseError
+        );
+
+        setError(
+          firebaseError?.message ||
+            "Unable to receive pickup notifications from Firebase."
+        );
+
+        setLoading(false);
+        setRefreshing(false);
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+
+  /* =======================================================
+     SELECTED DONATION
+     ======================================================= */
+
+  const donation = useMemo(() => {
+    if (!selectedDonationId) {
+      return null;
+    }
+
+    return (
+      donations.find(
+        (item) =>
+          item.id === selectedDonationId
+      ) || null
+    );
+  }, [
+    donations,
+    selectedDonationId,
+  ]);
+
+
+  /* =======================================================
+     DERIVED DATA
+     ======================================================= */
 
   const currentStatus =
     donation?.status ||
     "Pickup Pending";
 
+
   const currentStatusIndex =
-    getStatusIndex(
-      currentStatus
-    );
+    getStatusIndex(currentStatus);
+
 
   const progressPercentage =
     Math.round(
@@ -267,44 +362,155 @@ export default function Donations() {
         100
     );
 
-  const ngo =
-    donation?.ngo ||
-    FALLBACK_DONATION.ngo;
 
-  const formattedDate =
-    formatDate(
-      donation?.date
-    );
+  const ngo =
+    donation?.ngo || {
+      name: "NGO Partner",
+      phone: "Not available",
+      distance: "—",
+      capacity: 0,
+      responseTime: "—",
+    };
+
 
   const surplusMeals =
     Number(
-      donation?.surplus_meals
+      donation?.surplus_meals ??
+        donation?.surplusMeals ??
+        donation?.pickupMeals
     ) || 0;
+
+
+  const totalSurplusMeals =
+    Number(
+      donation?.totalSurplusMeals ??
+        donation?.total_surplus_meals ??
+        surplusMeals
+    ) || surplusMeals;
+
 
   const preparedMeals =
     Number(
-      donation?.prepared_meals
+      donation?.prepared_meals ??
+        donation?.preparedMeals
     ) || 0;
+
 
   const servedMeals =
     Number(
-      donation?.served_meals
+      donation?.served_meals ??
+        donation?.servedMeals
     ) || 0;
+
+
+  const predictedMeals =
+    Number(
+      donation?.predicted_meals ??
+        donation?.predictedMeals
+    ) || 0;
+
+
+  const pickupLocation =
+    donation?.pickup_location ||
+    donation?.pickupLocation ||
+    "Main Campus Canteen";
+
+
+  const shelfLife =
+    donation?.shelf_life ||
+    donation?.shelfLife ||
+    "2 hours";
+
+
+  const isPending =
+    currentStatus ===
+    "Pickup Pending";
+
+
+  const isAccepted =
+    currentStatus ===
+      "NGO Accepted" ||
+    currentStatus ===
+      "Pickup In Progress" ||
+    currentStatus ===
+      "Picked Up" ||
+    currentStatus ===
+      "Completed";
+
+
+  const isInProgress =
+    currentStatus ===
+    "Pickup In Progress";
+
+
+  const isPickedUp =
+    currentStatus ===
+      "Picked Up" ||
+    currentStatus ===
+      "Completed";
+
 
   const isCompleted =
     currentStatus ===
     "Completed";
 
-  /* ------------------------------------------------------------------------ */
-  /* Update status                                                            */
-  /* ------------------------------------------------------------------------ */
+
+  /* =======================================================
+     ACCEPT PICKUP
+     ======================================================= */
+
+  const handleAcceptPickup = async () => {
+    if (!donation?.id) {
+      setError(
+        "No pickup request is selected."
+      );
+
+      return;
+    }
+
+    try {
+      setUpdatingStatus(true);
+      setError("");
+      setSuccessMessage("");
+
+      await updateDonationStatus({
+        donationId:
+          donation.id,
+
+        status:
+          "NGO Accepted",
+      });
+
+      setSuccessMessage(
+        "Pickup accepted successfully. The canteen has been notified."
+      );
+    } catch (statusError) {
+      console.error(
+        "Accept pickup error:",
+        statusError
+      );
+
+      setError(
+        statusError?.message ||
+          "Unable to accept this pickup request."
+      );
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
+
+  /* =======================================================
+     UPDATE PICKUP STATUS
+     ======================================================= */
 
   const handleStatusUpdate =
     async (newStatus) => {
       if (!donation?.id) {
         setError(
-          "This donation does not have a Firebase ID."
+          "No pickup request is selected."
         );
+
         return;
       }
 
@@ -312,6 +518,23 @@ export default function Donations() {
         newStatus ===
         currentStatus
       ) {
+        return;
+      }
+
+      /*
+       * Do not allow skipping NGO acceptance.
+       */
+
+      if (
+        newStatus !==
+          "NGO Accepted" &&
+        currentStatus ===
+          "Pickup Pending"
+      ) {
+        setError(
+          "Please accept the pickup request first."
+        );
+
         return;
       }
 
@@ -324,839 +547,2090 @@ export default function Donations() {
           donationId:
             donation.id,
 
-          status: newStatus,
+          status:
+            newStatus,
         });
 
-        /*
-         * Reload the complete Firestore
-         * document so timestamps and other
-         * updated fields are reflected.
-         */
-        const updated =
-          await getDonation(
-            donation.id
-          );
-
-        setDonation(updated);
-
         setSuccessMessage(
-          `Donation status updated to "${newStatus}".`
+          `Pickup status updated to "${newStatus}".`
         );
       } catch (statusError) {
         console.error(
-          "Donation status update error:",
+          "Status update error:",
           statusError
         );
 
         setError(
           statusError?.message ||
-            "Unable to update the donation status."
+            "Unable to update pickup status."
         );
       } finally {
         setUpdatingStatus(false);
       }
     };
 
-  /* ------------------------------------------------------------------------ */
-  /* Navigation                                                               */
-  /* ------------------------------------------------------------------------ */
 
-  const handleBackToRescue = () => {
-    navigate("/food-rescue", {
-      state: {
-        date:
-          donation?.date,
+  /* =======================================================
+     REFRESH
+     ======================================================= */
 
-        mealType:
-          donation?.meal_type ||
-          "Lunch",
+  const handleRefresh = () => {
+    /*
+     * onSnapshot is already real-time.
+     * This visual state simply tells the user
+     * that Firebase is being checked.
+     */
 
-        predictedMeals:
-          donation?.predicted_meals ||
-          0,
+    setRefreshing(true);
 
-        cookedMeals:
-          preparedMeals,
-
-        preparedMeals,
-
-        servedMeals,
-
-        surplusMeals:
-          surplusMeals,
-
-        pickupLocation:
-          donation?.pickup_location ||
-          "Main Campus Canteen",
-
-        shelfLife:
-          donation?.shelf_life ||
-          "2 hours",
-
-        shelfLifeMinutes:
-          donation?.shelf_life_minutes ||
-          120,
-
-        ngo,
-
-        surplusEventId:
-          donation?.surplus_event_id,
-
-        donationId:
-          donation?.id,
-
-        status:
-          currentStatus,
-
-        notificationSent: true,
-      },
-    });
+    window.setTimeout(() => {
+      setRefreshing(false);
+    }, 700);
   };
 
-  /* ------------------------------------------------------------------------ */
-  /* Loading state                                                            */
-  /* ------------------------------------------------------------------------ */
+
+  /* =======================================================
+     SELECT REQUEST
+     ======================================================= */
+
+  const handleSelectRequest = (
+    donationId
+  ) => {
+    setSelectedDonationId(
+      donationId
+    );
+
+    setError("");
+    setSuccessMessage("");
+  };
+
+
+  /* =======================================================
+     NAVIGATION
+     ======================================================= */
+
+  const handleBack = () => {
+    navigate("/dashboard");
+  };
+
+
+  /* =======================================================
+     LOADING
+     ======================================================= */
 
   if (loading) {
     return (
       <div className="donations-page">
-        <div className="donations-loading">
-          <div className="donations-loading-icon">
-            <RefreshCw
-              size={24}
+
+        <div
+          className="donations-loading"
+          style={{
+            minHeight: "100vh",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexDirection: "column",
+            gap: "16px",
+            padding: "30px",
+          }}
+        >
+
+          <div
+            style={{
+              width: "72px",
+              height: "72px",
+              borderRadius: "22px",
+              display: "grid",
+              placeItems: "center",
+              background:
+                "rgba(16,185,129,0.12)",
+              color: "#34d399",
+            }}
+          >
+            <Loader2
+              size={34}
               className="spin"
             />
           </div>
 
-          <h2>
-            Loading donation
+          <h2
+            style={{
+              fontSize: "28px",
+              margin: 0,
+            }}
+          >
+            NGO Dashboard
           </h2>
 
-          <p>
-            Fetching the rescue record
-            from Firebase...
+          <p
+            style={{
+              fontSize: "16px",
+              margin: 0,
+              opacity: 0.7,
+            }}
+          >
+            Connecting to Firebase pickup
+            notifications...
           </p>
+
         </div>
+
       </div>
     );
   }
 
-  /* ------------------------------------------------------------------------ */
-  /* Render                                                                   */
-  /* ------------------------------------------------------------------------ */
+
+  /* =======================================================
+     RENDER
+     ======================================================= */
 
   return (
     <div className="donations-page">
-      {/* ================================================================== */}
-      {/* HEADER                                                             */}
-      {/* ================================================================== */}
+
+      {/* =================================================
+          HEADER
+          ================================================= */}
 
       <header className="donations-header">
+
         <div className="donations-header-inner">
+
           <button
             className="donations-back"
-            onClick={
-              handleBackToRescue
-            }
+            onClick={handleBack}
           >
-            <ArrowLeft size={18} />
+            <ArrowLeft size={19} />
 
-            Food Rescue
+            Dashboard
           </button>
 
+
           <div className="donations-title">
+
             <div className="donations-title-icon">
-              <Truck size={21} />
+              <HeartHandshake
+                size={25}
+              />
             </div>
 
             <div>
+
               <h1>
-                Donation Tracking
+                NGO Food Rescue Center
               </h1>
 
               <p>
-                Monitor the NGO pickup and
-                rescue progress.
+                Receive and manage campus
+                food pickup requests.
               </p>
+
             </div>
+
           </div>
 
-          {incomingDonationId && (
-            <button
-              className="donations-refresh"
-              onClick={() =>
-                loadDonation(true)
-              }
-              disabled={refreshing}
-            >
-              <RefreshCw
-                size={16}
-                className={
-                  refreshing
-                    ? "spin"
-                    : ""
-                }
-              />
 
-              Refresh
-            </button>
-          )}
+          <button
+            className="donations-refresh"
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+
+            <RefreshCw
+              size={17}
+              className={
+                refreshing
+                  ? "spin"
+                  : ""
+              }
+            />
+
+            Refresh
+
+          </button>
+
         </div>
+
       </header>
 
+
       <main className="donations-container">
-        {/* ================================================================= */}
-        {/* ERROR                                                             */}
-        {/* ================================================================= */}
+
+        {/* =================================================
+            NOTIFICATION BANNER
+            ================================================= */}
+
+        {notificationCount > 0 && (
+          <section
+            style={{
+              marginBottom: "24px",
+              padding: "24px",
+              borderRadius: "20px",
+              border:
+                "2px solid rgba(16,185,129,0.35)",
+              background:
+                "linear-gradient(135deg, rgba(16,185,129,0.15), rgba(15,23,42,0.92))",
+              boxShadow:
+                "0 20px 60px rgba(0,0,0,0.20)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent:
+                "space-between",
+              gap: "20px",
+              flexWrap: "wrap",
+            }}
+          >
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "18px",
+              }}
+            >
+
+              <div
+                style={{
+                  width: "58px",
+                  height: "58px",
+                  borderRadius: "18px",
+                  display: "grid",
+                  placeItems: "center",
+                  background:
+                    "#10b981",
+                  color: "#052e1c",
+                  flexShrink: 0,
+                }}
+              >
+                <HeartHandshake
+                  size={29}
+                />
+              </div>
+
+              <div>
+
+                <div
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: 800,
+                    letterSpacing:
+                      "0.12em",
+                    color: "#6ee7b7",
+                    marginBottom:
+                      "5px",
+                  }}
+                >
+                  NEW FOOD RESCUE REQUEST
+                </div>
+
+                <h2
+                  style={{
+                    fontSize:
+                      "clamp(20px, 3vw, 30px)",
+                    margin: 0,
+                    color: "#ecfdf5",
+                  }}
+                >
+                  {notificationCount} pickup
+                  {notificationCount > 1
+                    ? " requests"
+                    : " request"}{" "}
+                  waiting for you
+                </h2>
+
+                <p
+                  style={{
+                    margin:
+                      "6px 0 0",
+                    color:
+                      "#a7f3d0",
+                    fontSize: "15px",
+                  }}
+                >
+                  Fresh surplus food is
+                  available from a campus
+                  canteen.
+                </p>
+
+              </div>
+
+            </div>
+
+            <div
+              style={{
+                padding:
+                  "10px 16px",
+                borderRadius: "999px",
+                background:
+                  "rgba(255,255,255,0.08)",
+                color: "#d1fae5",
+                fontSize: "14px",
+                fontWeight: 700,
+              }}
+            >
+              LIVE FROM FIREBASE
+            </div>
+
+          </section>
+        )}
+
+
+        {/* =================================================
+            ERROR
+            ================================================= */}
 
         {error && (
-          <div className="donation-alert error">
-            <AlertCircle size={19} />
+          <div
+            className="donation-alert error"
+            style={{
+              fontSize: "15px",
+              padding: "16px",
+            }}
+          >
+
+            <AlertCircle
+              size={21}
+            />
 
             <div>
+
               <strong>
-                Unable to complete action
+                Action required
               </strong>
 
-              <p>{error}</p>
+              <p>
+                {error}
+              </p>
+
             </div>
+
           </div>
         )}
 
-        {/* ================================================================= */}
-        {/* SUCCESS                                                           */}
-        {/* ================================================================= */}
+
+        {/* =================================================
+            SUCCESS
+            ================================================= */}
 
         {successMessage && (
-          <div className="donation-alert success">
-            <CheckCircle2 size={19} />
+          <div
+            className="donation-alert success"
+            style={{
+              fontSize: "15px",
+              padding: "16px",
+            }}
+          >
+
+            <CheckCircle2
+              size={21}
+            />
 
             <div>
+
               <strong>
-                Updated successfully
+                Firebase updated
               </strong>
 
               <p>
                 {successMessage}
               </p>
+
             </div>
+
           </div>
         )}
 
-        {/* ================================================================= */}
-        {/* HERO                                                              */}
-        {/* ================================================================= */}
 
-        <section className="donation-hero">
-          <div>
-            <span>
-              FOOD RESCUE DISPATCH
-            </span>
+        {/* =================================================
+            NO REQUEST
+            ================================================= */}
 
-            <h2>
-              {surplusMeals} meals
-              scheduled for rescue
-            </h2>
+        {!donation && (
+          <section
+            style={{
+              minHeight: "430px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              textAlign: "center",
+              padding: "40px 20px",
+            }}
+          >
 
-            <p>
-              {formattedDate} ·{" "}
-              {donation?.meal_type ||
-                "Lunch"}
-            </p>
-          </div>
+            <div
+              style={{
+                maxWidth: "560px",
+              }}
+            >
 
-          <div className="donation-status-pill">
-            <Clock3 size={16} />
-
-            {currentStatus}
-          </div>
-        </section>
-
-        {/* ================================================================= */}
-        {/* MAIN GRID                                                         */}
-        {/* ================================================================= */}
-
-        <div className="donations-grid">
-          <div className="donations-main">
-            {/* ============================================================= */}
-            {/* PROGRESS                                                       */}
-            {/* ============================================================= */}
-
-            <section className="donation-card">
-              <div className="donation-card-heading">
-                <div>
-                  <span>
-                    PICKUP TRACKING
-                  </span>
-
-                  <h3>
-                    Rescue Progress
-                  </h3>
-                </div>
-
-                <Truck size={21} />
+              <div
+                style={{
+                  width: "90px",
+                  height: "90px",
+                  margin: "0 auto 24px",
+                  borderRadius: "28px",
+                  display: "grid",
+                  placeItems: "center",
+                  background:
+                    "rgba(16,185,129,0.10)",
+                  color: "#34d399",
+                }}
+              >
+                <HeartHandshake
+                  size={42}
+                />
               </div>
 
-              <div className="progress-track">
+              <h2
+                style={{
+                  fontSize:
+                    "clamp(28px, 5vw, 42px)",
+                  margin:
+                    "0 0 12px",
+                }}
+              >
+                No pickup requests
+              </h2>
+
+              <p
+                style={{
+                  fontSize: "17px",
+                  lineHeight: 1.7,
+                  opacity: 0.7,
+                  margin: 0,
+                }}
+              >
+                Your NGO is connected to
+                Firebase. When a campus
+                canteen sends surplus food
+                for rescue, the request will
+                appear here automatically.
+              </p>
+
+            </div>
+
+          </section>
+        )}
+
+
+        {donation && (
+          <>
+
+            {/* =================================================
+                REQUEST SELECTOR
+                ================================================= */}
+
+            {donations.length > 1 && (
+              <section
+                style={{
+                  marginBottom: "24px",
+                }}
+              >
+
                 <div
-                  className="progress-fill"
                   style={{
-                    width: `${progressPercentage}%`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent:
+                      "space-between",
+                    gap: "15px",
+                    marginBottom:
+                      "12px",
+                  }}
+                >
+
+                  <h2
+                    style={{
+                      fontSize: "20px",
+                      margin: 0,
+                    }}
+                  >
+                    Pickup Requests
+                  </h2>
+
+                  <span
+                    style={{
+                      fontSize: "13px",
+                      opacity: 0.6,
+                    }}
+                  >
+                    {donations.length} total
+                  </span>
+
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "10px",
+                    overflowX:
+                      "auto",
+                    paddingBottom:
+                      "5px",
+                  }}
+                >
+
+                  {donations.map(
+                    (item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() =>
+                          handleSelectRequest(
+                            item.id
+                          )
+                        }
+                        style={{
+                          minWidth:
+                            "230px",
+                          textAlign:
+                            "left",
+                          padding:
+                            "14px 16px",
+                          borderRadius:
+                            "15px",
+                          border:
+                            item.id ===
+                            selectedDonationId
+                              ? "2px solid #10b981"
+                              : "1px solid rgba(255,255,255,0.10)",
+                          background:
+                            item.id ===
+                            selectedDonationId
+                              ? "rgba(16,185,129,0.10)"
+                              : "rgba(255,255,255,0.03)",
+                          color:
+                            "inherit",
+                          cursor:
+                            "pointer",
+                        }}
+                      >
+
+                        <strong
+                          style={{
+                            display:
+                              "block",
+                            fontSize:
+                              "15px",
+                            marginBottom:
+                              "5px",
+                          }}
+                        >
+                          {Number(
+                            item.surplus_meals ??
+                              item.surplusMeals ??
+                              0
+                          )}{" "}
+                          meals
+                        </strong>
+
+                        <span
+                          style={{
+                            display:
+                              "block",
+                            fontSize:
+                              "13px",
+                            opacity:
+                              0.65,
+                          }}
+                        >
+                          {item.meal_type ||
+                            item.mealType ||
+                            "Meal"}{" "}
+                          ·{" "}
+                          {formatDate(
+                            item.date
+                          )}
+                        </span>
+
+                        <span
+                          style={{
+                            display:
+                              "inline-block",
+                            marginTop:
+                              "8px",
+                            fontSize:
+                              "11px",
+                            fontWeight:
+                              800,
+                            color:
+                              item.status ===
+                              "Pickup Pending"
+                                ? "#fbbf24"
+                                : "#6ee7b7",
+                          }}
+                        >
+                          {item.status ||
+                            "Pickup Pending"}
+                        </span>
+
+                      </button>
+                    )
+                  )}
+
+                </div>
+
+              </section>
+            )}
+
+
+            {/* =================================================
+                BIG REQUEST CARD
+                ================================================= */}
+
+            {isPending && (
+              <section
+                style={{
+                  marginBottom:
+                    "28px",
+                  padding:
+                    "clamp(24px, 4vw, 38px)",
+                  borderRadius: "24px",
+                  background:
+                    "linear-gradient(135deg, #064e3b, #0f766e)",
+                  color: "white",
+                  boxShadow:
+                    "0 25px 70px rgba(5,150,105,0.22)",
+                  position:
+                    "relative",
+                  overflow:
+                    "hidden",
+                }}
+              >
+
+                <div
+                  style={{
+                    position:
+                      "absolute",
+                    width: "260px",
+                    height: "260px",
+                    borderRadius:
+                      "50%",
+                    right:
+                      "-100px",
+                    top:
+                      "-100px",
+                    background:
+                      "rgba(255,255,255,0.08)",
                   }}
                 />
-              </div>
 
-              <div className="status-timeline">
-                {STATUS_FLOW.map(
-                  (
-                    status,
-                    index
-                  ) => {
-                    const completed =
-                      index <=
-                      currentStatusIndex;
+                <div
+                  style={{
+                    position:
+                      "relative",
+                    zIndex: 1,
+                  }}
+                >
 
-                    const active =
-                      status ===
-                      currentStatus;
+                  <div
+                    style={{
+                      display:
+                        "inline-flex",
+                      alignItems:
+                        "center",
+                      gap: "8px",
+                      padding:
+                        "8px 13px",
+                      borderRadius:
+                        "999px",
+                      background:
+                        "rgba(255,255,255,0.12)",
+                      fontSize: "12px",
+                      fontWeight: 800,
+                      letterSpacing:
+                        "0.08em",
+                      marginBottom:
+                        "18px",
+                    }}
+                  >
 
-                    return (
-                      <div
-                        className={`timeline-item ${
-                          completed
-                            ? "completed"
-                            : ""
-                        } ${
-                          active
-                            ? "active"
-                            : ""
-                        }`}
-                        key={status}
-                      >
-                        <div className="timeline-dot">
-                          {completed ? (
-                            <CheckCircle2
-                              size={17}
-                            />
-                          ) : (
-                            index + 1
-                          )}
-                        </div>
+                    <span
+                      style={{
+                        width: "9px",
+                        height: "9px",
+                        borderRadius:
+                          "50%",
+                        background:
+                          "#fbbf24",
+                        boxShadow:
+                          "0 0 0 5px rgba(251,191,36,0.15)",
+                      }}
+                    />
 
-                        <span>
-                          {status}
-                        </span>
-                      </div>
-                    );
-                  }
-                )}
-              </div>
+                    ACTION REQUIRED
 
-              <div className="current-status-description">
-                <Clock3 size={16} />
+                  </div>
+
+                  <h2
+                    style={{
+                      fontSize:
+                        "clamp(30px, 5vw, 52px)",
+                      lineHeight:
+                        1.05,
+                      margin:
+                        "0 0 12px",
+                    }}
+                  >
+                    New food pickup
+                    request
+                  </h2>
+
+                  <p
+                    style={{
+                      fontSize:
+                        "clamp(16px, 2vw, 19px)",
+                      lineHeight:
+                        1.6,
+                      maxWidth:
+                        "750px",
+                      color:
+                        "#d1fae5",
+                      margin:
+                        "0 0 26px",
+                    }}
+                  >
+                    The campus canteen has
+                    prepared surplus food that
+                    is ready for your NGO to
+                    rescue.
+                  </p>
+
+                  <div
+                    style={{
+                      display:
+                        "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fit, minmax(150px, 1fr))",
+                      gap: "12px",
+                      marginBottom:
+                        "26px",
+                    }}
+                  >
+
+                    <BigRequestStat
+                      value={`${surplusMeals}`}
+                      label="Meals to rescue"
+                    />
+
+                    <BigRequestStat
+                      value={
+                        donation?.meal_type ||
+                        "Lunch"
+                      }
+                      label="Meal"
+                    />
+
+                    <BigRequestStat
+                      value={
+                        donation?.shelf_life ||
+                        "2 hours"
+                      }
+                      label="Shelf life"
+                    />
+
+                    <BigRequestStat
+                      value={
+                        ngo.distance ||
+                        `${ngo.distanceKm || 0} km`
+                      }
+                      label="Distance"
+                    />
+
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={
+                      handleAcceptPickup
+                    }
+                    disabled={
+                      updatingStatus
+                    }
+                    style={{
+                      width: "100%",
+                      minHeight:
+                        "68px",
+                      border: "none",
+                      borderRadius:
+                        "18px",
+                      background:
+                        "white",
+                      color:
+                        "#065f46",
+                      fontSize:
+                        "18px",
+                      fontWeight:
+                        900,
+                      letterSpacing:
+                        "0.01em",
+                      cursor:
+                        updatingStatus
+                          ? "not-allowed"
+                          : "pointer",
+                      display:
+                        "flex",
+                      alignItems:
+                        "center",
+                      justifyContent:
+                        "center",
+                      gap: "10px",
+                      opacity:
+                        updatingStatus
+                          ? 0.7
+                          : 1,
+                    }}
+                  >
+
+                    {updatingStatus ? (
+                      <>
+                        <Loader2
+                          size={22}
+                          className="spin"
+                        />
+
+                        Accepting pickup...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2
+                          size={23}
+                        />
+
+                        ACCEPT PICKUP
+                      </>
+                    )}
+
+                  </button>
+
+                </div>
+
+              </section>
+            )}
+
+
+            {/* =================================================
+                HERO
+                ================================================= */}
+
+            <section className="donation-hero">
+
+              <div>
 
                 <span>
-                  {
-                    STATUS_DESCRIPTIONS[
-                      currentStatus
-                    ]
-                  }
+                  FOOD RESCUE DISPATCH
                 </span>
+
+                <h2>
+                  {surplusMeals} meals
+                  scheduled for rescue
+                </h2>
+
+                <p>
+                  {formatDate(
+                    donation.date
+                  )}{" "}
+                  ·{" "}
+                  {donation.meal_type ||
+                    "Lunch"}
+                </p>
+
               </div>
+
+              <div className="donation-status-pill">
+
+                <Clock3 size={17} />
+
+                {currentStatus}
+
+              </div>
+
             </section>
 
-            {/* ============================================================= */}
-            {/* NGO                                                            */}
-            {/* ============================================================= */}
 
-            <section className="donation-card">
-              <div className="donation-card-heading">
-                <div>
-                  <span>
-                    NGO PARTNER
-                  </span>
+            {/* =================================================
+                MAIN GRID
+                ================================================= */}
 
-                  <h3>
-                    {ngo.name ||
-                      "NGO Partner"}
-                  </h3>
-                </div>
+            <div className="donations-grid">
 
-                <HeartHandshake
-                  size={21}
-                />
-              </div>
+              <div className="donations-main">
 
-              <div className="ngo-profile">
-                <div className="ngo-profile-icon">
-                  <HeartHandshake
-                    size={25}
+                {/* =============================================
+                    PROGRESS
+                    ============================================= */}
+
+                <section className="donation-card">
+
+                  <div className="donation-card-heading">
+
+                    <div>
+
+                      <span>
+                        PICKUP TRACKING
+                      </span>
+
+                      <h3>
+                        Rescue Progress
+                      </h3>
+
+                    </div>
+
+                    <Truck size={23} />
+
+                  </div>
+
+
+                  <div
+                    className="progress-track"
+                  >
+
+                    <div
+                      className="progress-fill"
+                      style={{
+                        width:
+                          `${progressPercentage}%`,
+                      }}
+                    />
+
+                  </div>
+
+
+                  <div
+                    className="status-timeline"
+                  >
+
+                    {STATUS_FLOW.map(
+                      (
+                        status,
+                        index
+                      ) => {
+
+                        const completed =
+                          index <=
+                          currentStatusIndex;
+
+                        const active =
+                          status ===
+                          currentStatus;
+
+                        return (
+                          <div
+                            className={
+                              `timeline-item ${
+                                completed
+                                  ? "completed"
+                                  : ""
+                              } ${
+                                active
+                                  ? "active"
+                                  : ""
+                              }`
+                            }
+                            key={
+                              status
+                            }
+                          >
+
+                            <div
+                              className="timeline-dot"
+                            >
+
+                              {completed ? (
+                                <CheckCircle2
+                                  size={17}
+                                />
+                              ) : (
+                                index + 1
+                              )}
+
+                            </div>
+
+                            <span>
+                              {status}
+                            </span>
+
+                          </div>
+                        );
+                      }
+                    )}
+
+                  </div>
+
+
+                  <div
+                    className="current-status-description"
+                  >
+
+                    <Clock3
+                      size={17}
+                    />
+
+                    <span>
+                      {
+                        STATUS_DESCRIPTIONS[
+                          currentStatus
+                        ]
+                      }
+                    </span>
+
+                  </div>
+
+                </section>
+
+
+                {/* =============================================
+                    CHECKLIST
+                    ============================================= */}
+
+                <section className="donation-card">
+
+                  <div
+                    className="donation-card-heading"
+                  >
+
+                    <div>
+
+                      <span>
+                        NGO CHECKLIST
+                      </span>
+
+                      <h3>
+                        Rescue Completion
+                      </h3>
+
+                    </div>
+
+                    <ShieldCheck
+                      size={23}
+                    />
+
+                  </div>
+
+
+                  <ChecklistItem
+                    label="Pickup request received"
+                    done={
+                      donation?.checklist
+                        ?.requestSent !==
+                        false
+                    }
                   />
-                </div>
 
-                <div className="ngo-profile-info">
-                  <strong>
-                    {ngo.name ||
-                      "NGO Partner"}
-                  </strong>
+                  <ChecklistItem
+                    label="NGO accepted pickup"
+                    done={
+                      donation?.checklist
+                        ?.ngoAccepted ||
+                      isAccepted
+                    }
+                  />
 
-                  <span>
-                    Registered food rescue
-                    partner
-                  </span>
-                </div>
-              </div>
+                  <ChecklistItem
+                    label="Pickup location confirmed"
+                    done={
+                      donation?.checklist
+                        ?.pickupLocationConfirmed ||
+                      isAccepted
+                    }
+                  />
 
-              <div className="ngo-contact-grid">
-                <div>
-                  <MapPin size={17} />
+                  <ChecklistItem
+                    label="Meals confirmed"
+                    done={
+                      donation?.checklist
+                        ?.mealsConfirmed ||
+                      isAccepted
+                    }
+                  />
 
-                  <span>
-                    Distance
+                  <ChecklistItem
+                    label="Pickup started"
+                    done={
+                      donation?.checklist
+                        ?.pickupStarted ||
+                      isInProgress ||
+                      isPickedUp
+                    }
+                  />
 
-                    <strong>
-                      {ngo.distance ||
-                        `${ngo.distanceKm || 0} km`}
-                    </strong>
-                  </span>
-                </div>
+                  <ChecklistItem
+                    label="Food collected"
+                    done={
+                      donation?.checklist
+                        ?.foodCollected ||
+                      isPickedUp
+                    }
+                  />
 
-                <div>
-                  <Phone size={17} />
+                  <ChecklistItem
+                    label="Rescue completed"
+                    done={
+                      donation?.checklist
+                        ?.completed ||
+                      isCompleted
+                    }
+                  />
 
-                  <span>
-                    Phone
+                </section>
 
-                    <strong>
-                      {ngo.phone ||
-                        "Not available"}
-                    </strong>
-                  </span>
-                </div>
 
-                <div>
-                  <Clock3 size={17} />
+                {/* =============================================
+                    NGO DETAILS
+                    ============================================= */}
 
-                  <span>
-                    Response time
+                <section className="donation-card">
 
-                    <strong>
-                      {ngo.responseTime ||
-                        "—"}
-                    </strong>
-                  </span>
-                </div>
-              </div>
-            </section>
+                  <div
+                    className="donation-card-heading"
+                  >
 
-            {/* ============================================================= */}
-            {/* PICKUP DETAILS                                                 */}
-            {/* ============================================================= */}
+                    <div>
 
-            <section className="donation-card">
-              <div className="donation-card-heading">
-                <div>
-                  <span>
+                      <span>
+                        NGO PARTNER
+                      </span>
+
+                      <h3>
+                        {ngo.name ||
+                          "NGO Partner"}
+                      </h3>
+
+                    </div>
+
+                    <HeartHandshake
+                      size={23}
+                    />
+
+                  </div>
+
+
+                  <div
+                    className="ngo-profile"
+                  >
+
+                    <div
+                      className="ngo-profile-icon"
+                    >
+                      <HeartHandshake
+                        size={28}
+                      />
+                    </div>
+
+                    <div
+                      className="ngo-profile-info"
+                    >
+
+                      <strong>
+                        {ngo.name ||
+                          "NGO Partner"}
+                      </strong>
+
+                      <span>
+                        Registered food
+                        rescue partner
+                      </span>
+
+                    </div>
+
+                  </div>
+
+
+                  <div
+                    className="ngo-contact-grid"
+                  >
+
+                    <div>
+
+                      <MapPin
+                        size={18}
+                      />
+
+                      <span>
+                        Distance
+
+                        <strong>
+                          {ngo.distance ||
+                            `${ngo.distanceKm || 0} km`}
+                        </strong>
+                      </span>
+
+                    </div>
+
+
+                    <div>
+
+                      <Phone
+                        size={18}
+                      />
+
+                      <span>
+                        Phone
+
+                        <strong>
+                          {ngo.phone ||
+                            "Not available"}
+                        </strong>
+                      </span>
+
+                    </div>
+
+
+                    <div>
+
+                      <Clock3
+                        size={18}
+                      />
+
+                      <span>
+                        Response time
+
+                        <strong>
+                          {ngo.responseTime ||
+                            "—"}
+                        </strong>
+                      </span>
+
+                    </div>
+
+                  </div>
+
+                </section>
+
+
+                {/* =============================================
                     PICKUP DETAILS
-                  </span>
+                    ============================================= */}
 
-                  <h3>
-                    Rescue Information
-                  </h3>
-                </div>
+                <section className="donation-card">
 
-                <PackageCheck
-                  size={21}
-                />
+                  <div
+                    className="donation-card-heading"
+                  >
+
+                    <div>
+
+                      <span>
+                        PICKUP DETAILS
+                      </span>
+
+                      <h3>
+                        Rescue Information
+                      </h3>
+
+                    </div>
+
+                    <PackageCheck
+                      size={23}
+                    />
+
+                  </div>
+
+
+                  <div
+                    className="pickup-detail-grid"
+                  >
+
+                    <DetailItem
+                      icon={
+                        <MapPin
+                          size={19}
+                        />
+                      }
+                      label="Pickup Location"
+                      value={
+                        pickupLocation
+                      }
+                    />
+
+                    <DetailItem
+                      icon={
+                        <PackageCheck
+                          size={19}
+                        />
+                      }
+                      label="Rescue Quantity"
+                      value={`${surplusMeals} meals`}
+                    />
+
+                    <DetailItem
+                      icon={
+                        <Clock3
+                          size={19}
+                        />
+                      }
+                      label="Shelf Life"
+                      value={
+                        shelfLife
+                      }
+                    />
+
+                    <DetailItem
+                      icon={
+                        <UserRound
+                          size={19}
+                        />
+                      }
+                      label="NGO"
+                      value={
+                        ngo.name ||
+                        "NGO Partner"
+                      }
+                    />
+
+                  </div>
+
+                </section>
+
+
+                {/* =============================================
+                    MEAL SUMMARY
+                    ============================================= */}
+
+                <section className="donation-card">
+
+                  <div
+                    className="donation-card-heading"
+                  >
+
+                    <div>
+
+                      <span>
+                        MEAL OPERATIONS
+                      </span>
+
+                      <h3>
+                        Source Meal Summary
+                      </h3>
+
+                    </div>
+
+                    <PackageCheck
+                      size={23}
+                    />
+
+                  </div>
+
+
+                  <div
+                    className="meal-summary-grid"
+                  >
+
+                    <SummaryNumber
+                      label="Predicted"
+                      value={
+                        predictedMeals
+                      }
+                    />
+
+                    <SummaryNumber
+                      label="Prepared"
+                      value={
+                        preparedMeals
+                      }
+                    />
+
+                    <SummaryNumber
+                      label="Served"
+                      value={
+                        servedMeals
+                      }
+                    />
+
+                    <SummaryNumber
+                      label="Rescued"
+                      value={
+                        surplusMeals
+                      }
+                      highlight
+                    />
+
+                  </div>
+
+                </section>
+
               </div>
 
-              <div className="pickup-detail-grid">
-                <div>
-                  <MapPin size={18} />
+
+              {/* =================================================
+                  SIDEBAR
+                  ================================================= */}
+
+              <aside className="donations-sidebar">
+
+                {/* ===============================================
+                    RESCUE SUMMARY
+                    =============================================== */}
+
+                <section
+                  className="donation-summary"
+                >
 
                   <span>
-                    Pickup Location
-
-                    <strong>
-                      {donation?.pickup_location ||
-                        "Main Campus Canteen"}
-                    </strong>
-                  </span>
-                </div>
-
-                <div>
-                  <PackageCheck
-                    size={18}
-                  />
-
-                  <span>
-                    Rescue Quantity
-
-                    <strong>
-                      {surplusMeals} meals
-                    </strong>
-                  </span>
-                </div>
-
-                <div>
-                  <Clock3 size={18} />
-
-                  <span>
-                    Shelf Life
-
-                    <strong>
-                      {donation?.shelf_life ||
-                        "2 hours"}
-                    </strong>
-                  </span>
-                </div>
-
-                <div>
-                  <UserRound size={18} />
-
-                  <span>
-                    Recipient
-
-                    <strong>
-                      {ngo.name ||
-                        "NGO Partner"}
-                    </strong>
-                  </span>
-                </div>
-              </div>
-            </section>
-
-            {/* ============================================================= */}
-            {/* MEAL SUMMARY                                                   */}
-            {/* ============================================================= */}
-
-            <section className="donation-card">
-              <div className="donation-card-heading">
-                <div>
-                  <span>
-                    MEAL OPERATIONS
-                  </span>
-
-                  <h3>
-                    Source Meal Summary
-                  </h3>
-                </div>
-
-                <PackageCheck
-                  size={21}
-                />
-              </div>
-
-              <div className="meal-summary-grid">
-                <div>
-                  <span>
-                    Predicted
-                  </span>
-
-                  <strong>
-                    {Number(
-                      donation?.predicted_meals
-                    ) || 0}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>
-                    Prepared
-                  </span>
-
-                  <strong>
-                    {preparedMeals}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>
-                    Served
-                  </span>
-
-                  <strong>
-                    {servedMeals}
-                  </strong>
-                </div>
-
-                <div className="highlight">
-                  <span>
-                    Rescued
+                    RESCUE SUMMARY
                   </span>
 
                   <strong>
                     {surplusMeals}
                   </strong>
-                </div>
-              </div>
-            </section>
-          </div>
 
-          {/* =============================================================== */}
-          {/* SIDEBAR                                                         */}
-          {/* =============================================================== */}
+                  <small>
+                    meals redirected
+                    from waste
+                  </small>
 
-          <aside className="donations-sidebar">
-            {/* ============================================================= */}
-            {/* SUMMARY                                                        */}
-            {/* ============================================================= */}
-
-            <section className="donation-summary">
-              <span>
-                RESCUE SUMMARY
-              </span>
-
-              <strong>
-                {surplusMeals}
-              </strong>
-
-              <small>
-                meals redirected from waste
-              </small>
-
-              <div className="summary-line" />
-
-              <div>
-                <span>
-                  Meal
-                </span>
-
-                <strong>
-                  {donation?.meal_type ||
-                    "Lunch"}
-                </strong>
-              </div>
-
-              <div>
-                <span>
-                  Date
-                </span>
-
-                <strong>
-                  {formattedDate}
-                </strong>
-              </div>
-
-              <div>
-                <span>
-                  Status
-                </span>
-
-                <strong>
-                  {currentStatus}
-                </strong>
-              </div>
-            </section>
-
-            {/* ============================================================= */}
-            {/* STATUS CONTROL                                                 */}
-            {/* ============================================================= */}
-
-            <section className="status-control-card">
-              <span>
-                UPDATE STATUS
-              </span>
-
-              <h3>
-                Pickup Management
-              </h3>
-
-              <p>
-                Update the rescue stage as the
-                NGO pickup progresses.
-              </p>
-
-              <div className="status-buttons">
-                {STATUS_FLOW.map(
-                  (status) => {
-                    const selected =
-                      currentStatus ===
-                      status;
-
-                    return (
-                      <button
-                        key={status}
-                        className={
-                          selected
-                            ? "selected"
-                            : ""
-                        }
-                        onClick={() =>
-                          handleStatusUpdate(
-                            status
-                          )
-                        }
-                        disabled={
-                          updatingStatus
-                        }
-                      >
-                        {selected && (
-                          <CheckCircle2
-                            size={15}
-                          />
-                        )}
-
-                        {status}
-                      </button>
-                    );
-                  }
-                )}
-              </div>
-
-              {updatingStatus && (
-                <div className="status-updating">
-                  <RefreshCw
-                    size={15}
-                    className="spin"
+                  <div
+                    className="summary-line"
                   />
 
-                  Updating Firebase...
-                </div>
-              )}
-            </section>
+                  <div>
+                    <span>
+                      Meal
+                    </span>
 
-            {/* ============================================================= */}
-            {/* TIMESTAMPS                                                     */}
-            {/* ============================================================= */}
+                    <strong>
+                      {donation.meal_type ||
+                        "Lunch"}
+                    </strong>
+                  </div>
 
-            <section className="pickup-timestamps-card">
-              <div className="sidebar-section-title">
-                <span>
-                  ACTIVITY
-                </span>
+                  <div>
+                    <span>
+                      Date
+                    </span>
 
-                <Clock3 size={18} />
-              </div>
+                    <strong>
+                      {formatDate(
+                        donation.date
+                      )}
+                    </strong>
+                  </div>
 
-              <div className="activity-item">
-                <div className="activity-dot">
-                  <Check size={13} />
-                </div>
+                  <div>
+                    <span>
+                      Status
+                    </span>
 
-                <div>
-                  <strong>
-                    Donation created
-                  </strong>
+                    <strong>
+                      {currentStatus}
+                    </strong>
+                  </div>
 
-                  <span>
-                    {formatTimestamp(
-                      donation?.createdAt
-                    )}
-                  </span>
-                </div>
-              </div>
+                </section>
 
-              <div className="activity-item">
-                <div className="activity-dot">
-                  <Truck size={13} />
-                </div>
 
-                <div>
-                  <strong>
-                    Pickup requested
-                  </strong>
+                {/* ===============================================
+                    STATUS CONTROL
+                    =============================================== */}
+
+                <section
+                  className="status-control-card"
+                >
 
                   <span>
-                    {formatTimestamp(
-                      donation?.pickup_requested_at
-                    )}
+                    PICKUP MANAGEMENT
                   </span>
-                </div>
-              </div>
 
-              <div className="activity-item">
-                <div className="activity-dot">
-                  <PackageCheck
-                    size={13}
-                  />
-                </div>
-
-                <div>
-                  <strong>
-                    Picked up
-                  </strong>
-
-                  <span>
-                    {formatTimestamp(
-                      donation?.picked_up_at
-                    )}
-                  </span>
-                </div>
-              </div>
-
-              <div className="activity-item">
-                <div className="activity-dot">
-                  <CheckCircle2
-                    size={13}
-                  />
-                </div>
-
-                <div>
-                  <strong>
-                    Completed
-                  </strong>
-
-                  <span>
-                    {formatTimestamp(
-                      donation?.completed_at
-                    )}
-                  </span>
-                </div>
-              </div>
-            </section>
-
-            {/* ============================================================= */}
-            {/* COMPLETED                                                      */}
-            {/* ============================================================= */}
-
-            {isCompleted && (
-              <section className="completed-card">
-                <CheckCircle2 size={24} />
-
-                <div>
-                  <strong>
-                    Rescue Completed
-                  </strong>
+                  <h3>
+                    Update Rescue Status
+                  </h3>
 
                   <p>
-                    The rescued meals have
-                    successfully completed the
-                    pickup workflow.
+                    Update the status as
+                    your NGO completes
+                    each pickup stage.
                   </p>
-                </div>
-              </section>
-            )}
-          </aside>
-        </div>
 
-        {/* ================================================================= */}
-        {/* BOTTOM ACTIONS                                                    */}
-        {/* ================================================================= */}
 
-        <section className="donation-bottom-actions">
-          <button
-            onClick={
-              handleBackToRescue
-            }
-          >
-            <ArrowLeft size={17} />
+                  {isPending && (
+                    <button
+                      type="button"
+                      onClick={
+                        handleAcceptPickup
+                      }
+                      disabled={
+                        updatingStatus
+                      }
+                      style={{
+                        width: "100%",
+                        minHeight:
+                          "56px",
+                        border: "none",
+                        borderRadius:
+                          "14px",
+                        background:
+                          "#10b981",
+                        color:
+                          "#052e1c",
+                        fontSize:
+                          "16px",
+                        fontWeight:
+                          900,
+                        cursor:
+                          "pointer",
+                        display:
+                          "flex",
+                        alignItems:
+                          "center",
+                        justifyContent:
+                          "center",
+                        gap: "8px",
+                        marginBottom:
+                          "12px",
+                      }}
+                    >
 
-            Back to Food Rescue
-          </button>
+                      {updatingStatus ? (
+                        <>
+                          <Loader2
+                            size={18}
+                            className="spin"
+                          />
 
-          <button
-            className="impact-button"
-            onClick={() =>
-              navigate("/impact")
-            }
-          >
-            View Impact Dashboard
+                          Accepting...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2
+                            size={19}
+                          />
 
-            <CheckCircle2 size={17} />
-          </button>
-        </section>
+                          ACCEPT PICKUP
+                        </>
+                      )}
+
+                    </button>
+                  )}
+
+
+                  <div
+                    className="status-buttons"
+                  >
+
+                    {STATUS_FLOW.map(
+                      (status) => {
+
+                        const selected =
+                          currentStatus ===
+                          status;
+
+                        const disabled =
+                          updatingStatus ||
+                          status ===
+                            "Pickup Pending" ||
+                          (
+                            currentStatus ===
+                              "Pickup Pending" &&
+                            status !==
+                              "NGO Accepted"
+                          );
+
+                        return (
+                          <button
+                            key={status}
+                            type="button"
+                            className={
+                              selected
+                                ? "selected"
+                                : ""
+                            }
+                            onClick={() =>
+                              handleStatusUpdate(
+                                status
+                              )
+                            }
+                            disabled={
+                              disabled
+                            }
+                          >
+
+                            {selected && (
+                              <CheckCircle2
+                                size={15}
+                              />
+                            )}
+
+                            {status}
+
+                          </button>
+                        );
+                      }
+                    )}
+
+                  </div>
+
+
+                  {updatingStatus && (
+                    <div
+                      className="status-updating"
+                    >
+
+                      <RefreshCw
+                        size={15}
+                        className="spin"
+                      />
+
+                      Updating Firebase...
+
+                    </div>
+                  )}
+
+                </section>
+
+
+                {/* ===============================================
+                    ACTIVITY
+                    =============================================== */}
+
+                <section
+                  className="pickup-timestamps-card"
+                >
+
+                  <div
+                    className="sidebar-section-title"
+                  >
+
+                    <span>
+                      ACTIVITY
+                    </span>
+
+                    <Clock3
+                      size={18}
+                    />
+
+                  </div>
+
+
+                  <ActivityItem
+                    icon={
+                      <Check size={13} />
+                    }
+                    title="Pickup request received"
+                    timestamp={
+                      donation.createdAt
+                    }
+                  />
+
+                  <ActivityItem
+                    icon={
+                      <Truck size={13} />
+                    }
+                    title="Pickup requested"
+                    timestamp={
+                      donation.pickup_requested_at
+                    }
+                  />
+
+                  <ActivityItem
+                    icon={
+                      <CheckCircle2
+                        size={13}
+                      />
+                    }
+                    title="NGO accepted"
+                    timestamp={
+                      donation.acceptedAt
+                    }
+                  />
+
+                  <ActivityItem
+                    icon={
+                      <Truck size={13} />
+                    }
+                    title="Pickup started"
+                    timestamp={
+                      donation.pickup_started_at
+                    }
+                  />
+
+                  <ActivityItem
+                    icon={
+                      <PackageCheck
+                        size={13}
+                      />
+                    }
+                    title="Food collected"
+                    timestamp={
+                      donation.picked_up_at
+                    }
+                  />
+
+                  <ActivityItem
+                    icon={
+                      <CheckCircle2
+                        size={13}
+                      />
+                    }
+                    title="Completed"
+                    timestamp={
+                      donation.completed_at
+                    }
+                  />
+
+                </section>
+
+
+                {/* ===============================================
+                    COMPLETED
+                    =============================================== */}
+
+                {isCompleted && (
+                  <section
+                    className="completed-card"
+                  >
+
+                    <CheckCircle2
+                      size={28}
+                    />
+
+                    <div>
+
+                      <strong>
+                        Rescue Completed
+                      </strong>
+
+                      <p>
+                        The rescued meals
+                        have successfully
+                        completed the NGO
+                        pickup workflow.
+                      </p>
+
+                    </div>
+
+                  </section>
+                )}
+
+              </aside>
+
+            </div>
+
+
+            {/* =================================================
+                BOTTOM
+                ================================================= */}
+
+            <section
+              className="donation-bottom-actions"
+            >
+
+              <button
+                type="button"
+                onClick={handleBack}
+              >
+
+                <ArrowLeft
+                  size={18}
+                />
+
+                Back to Dashboard
+
+              </button>
+
+
+              <button
+                type="button"
+                className="impact-button"
+                onClick={() =>
+                  navigate("/impact")
+                }
+              >
+
+                View Impact Dashboard
+
+                <CheckCircle2
+                  size={18}
+                />
+
+              </button>
+
+            </section>
+
+          </>
+        )}
+
       </main>
+
+
+      <style>{`
+
+        .spin {
+          animation:
+            donationSpin
+            1s linear infinite;
+        }
+
+        @keyframes donationSpin {
+          from {
+            transform:
+              rotate(0deg);
+          }
+
+          to {
+            transform:
+              rotate(360deg);
+          }
+        }
+
+        .donation-alert {
+          display: flex;
+          gap: 12px;
+          align-items: flex-start;
+          margin-bottom: 18px;
+          border-radius: 14px;
+        }
+
+        .donation-alert p {
+          margin:
+            5px 0 0;
+          line-height: 1.5;
+        }
+
+        .donation-alert.error {
+          background:
+            rgba(239,68,68,0.08);
+          border:
+            1px solid rgba(239,68,68,0.22);
+        }
+
+        .donation-alert.success {
+          background:
+            rgba(16,185,129,0.08);
+          border:
+            1px solid rgba(16,185,129,0.22);
+        }
+
+      `}</style>
+
+    </div>
+  );
+}
+
+
+/* =========================================================
+   BIG REQUEST STAT
+   ========================================================= */
+
+function BigRequestStat({
+  value,
+  label,
+}) {
+  return (
+    <div
+      style={{
+        padding: "17px",
+        borderRadius: "16px",
+        background:
+          "rgba(255,255,255,0.09)",
+        border:
+          "1px solid rgba(255,255,255,0.10)",
+      }}
+    >
+
+      <strong
+        style={{
+          display: "block",
+          fontSize:
+            "clamp(21px, 3vw, 28px)",
+          lineHeight: 1.1,
+          marginBottom: "6px",
+        }}
+      >
+        {value}
+      </strong>
+
+      <span
+        style={{
+          fontSize: "12px",
+          color: "#a7f3d0",
+          fontWeight: 700,
+        }}
+      >
+        {label}
+      </span>
+
+    </div>
+  );
+}
+
+
+/* =========================================================
+   CHECKLIST ITEM
+   ========================================================= */
+
+function ChecklistItem({
+  label,
+  done,
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "14px",
+        padding:
+          "14px 4px",
+        borderBottom:
+          "1px solid rgba(255,255,255,0.07)",
+      }}
+    >
+
+      <div
+        style={{
+          width: "32px",
+          height: "32px",
+          borderRadius: "10px",
+          display: "grid",
+          placeItems: "center",
+          flexShrink: 0,
+          background: done
+            ? "rgba(16,185,129,0.15)"
+            : "rgba(148,163,184,0.10)",
+          color: done
+            ? "#34d399"
+            : "#64748b",
+        }}
+      >
+
+        {done ? (
+          <Check
+            size={17}
+          />
+        ) : (
+          <Clock3
+            size={16}
+          />
+        )}
+
+      </div>
+
+      <span
+        style={{
+          fontSize: "15px",
+          fontWeight: done
+            ? 700
+            : 500,
+          color: done
+            ? "#d1fae5"
+            : "#94a3b8",
+        }}
+      >
+        {label}
+      </span>
+
+      <span
+        style={{
+          marginLeft: "auto",
+          fontSize: "12px",
+          fontWeight: 800,
+          color: done
+            ? "#34d399"
+            : "#64748b",
+        }}
+      >
+        {done
+          ? "DONE"
+          : "PENDING"}
+      </span>
+
+    </div>
+  );
+}
+
+
+/* =========================================================
+   DETAIL ITEM
+   ========================================================= */
+
+function DetailItem({
+  icon,
+  label,
+  value,
+}) {
+  return (
+    <div>
+
+      {icon}
+
+      <span>
+
+        {label}
+
+        <strong>
+          {value}
+        </strong>
+
+      </span>
+
+    </div>
+  );
+}
+
+
+/* =========================================================
+   SUMMARY NUMBER
+   ========================================================= */
+
+function SummaryNumber({
+  label,
+  value,
+  highlight = false,
+}) {
+  return (
+    <div
+      className={
+        highlight
+          ? "highlight"
+          : ""
+      }
+    >
+
+      <span>
+        {label}
+      </span>
+
+      <strong>
+        {value}
+      </strong>
+
+    </div>
+  );
+}
+
+
+/* =========================================================
+   ACTIVITY ITEM
+   ========================================================= */
+
+function ActivityItem({
+  icon,
+  title,
+  timestamp,
+}) {
+  return (
+    <div
+      className="activity-item"
+    >
+
+      <div
+        className="activity-dot"
+      >
+        {icon}
+      </div>
+
+      <div>
+
+        <strong>
+          {title}
+        </strong>
+
+        <span>
+          {formatTimestamp(
+            timestamp
+          )}
+        </span>
+
+      </div>
+
     </div>
   );
 }
