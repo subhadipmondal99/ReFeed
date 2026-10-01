@@ -1,16 +1,39 @@
-# React + Vite
+# 🍱 ReFeed — Campus Canteen Food Waste Forecaster & Donation Dispatcher
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> **Predict → Prepare → Serve → Rescue → Measure**
 
-Currently, two official plugins are available:
+ReFeed is an AI-powered campus food management platform designed to reduce food waste in college canteens.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+The system uses **machine learning demand forecasting**, **weather and calendar context**, **meal-operation tracking**, **surplus detection**, and **NGO donation dispatch** to help campus canteens prepare the right quantity of food and rescue unavoidable surplus.
 
-## React Compiler
+---
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🚀 Project Overview
 
-## Expanding the ESLint configuration
+College canteens often prepare food based on rough estimates rather than actual demand. This can result in:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- Over-preparation
+- Unserved food
+- Food wastage
+- Unplanned surplus
+- Delayed NGO coordination
+- Lack of measurable waste-reduction data
+
+ReFeed creates a complete digital workflow:
+
+```text
+Calendar + Weather + Historical Demand
+                  ↓
+           AI Demand Forecast
+                  ↓
+         Ingredient Calculation
+                  ↓
+         Meal Preparation Plan
+                  ↓
+            Meal Operations
+                  ↓
+          Surplus Detection
+                  ↓
+          NGO Food Rescue
+                  ↓
+          Impact Measurement

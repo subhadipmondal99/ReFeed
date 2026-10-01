@@ -1,5 +1,13 @@
-import { useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import {
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 
 import {
   ArrowLeft,
@@ -11,6 +19,7 @@ import {
   CloudRain,
   Database,
   Leaf,
+  Loader2,
   Package,
   RefreshCw,
   Sparkles,
@@ -20,12 +29,16 @@ import {
   Zap,
 } from "lucide-react";
 
+import {
+  getPrediction,
+} from "../services/predictionService";
+
 import "./Preparation.css";
 
 
-/* =========================================================
-   HELPERS
-   ========================================================= */
+// =========================================================
+// HELPERS
+// =========================================================
 
 const formatNumber = (value) => {
   const number = Number(value);
@@ -37,6 +50,7 @@ const formatNumber = (value) => {
   return number.toLocaleString("en-IN");
 };
 
+
 const formatQuantity = (value) => {
   const number = Number(value);
 
@@ -47,111 +61,278 @@ const formatQuantity = (value) => {
   return number.toFixed(2);
 };
 
+
 const formatDate = (date) => {
+
   if (!date) {
     return "";
   }
 
-  const parsed = new Date(`${date}T00:00:00`);
+  const parsed =
+    new Date(`${date}T00:00:00`);
 
-  if (Number.isNaN(parsed.getTime())) {
+  if (
+    Number.isNaN(
+      parsed.getTime()
+    )
+  ) {
     return date;
   }
 
-  return parsed.toLocaleDateString("en-IN", {
-    weekday: "long",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return parsed.toLocaleDateString(
+    "en-IN",
+    {
+      weekday: "long",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }
+  );
 };
 
 
-/* =========================================================
-   PREPARATION PAGE
-   ========================================================= */
+// =========================================================
+// PREPARATION PAGE
+// =========================================================
 
 export default function Preparation() {
+
   const navigate = useNavigate();
 
   const location = useLocation();
 
 
-  /* =======================================================
-     FORECAST DATA
-     ======================================================= */
+  // ---------------------------------------------------------
+  // FORECAST PASSED FROM FORECAST PAGE
+  // ---------------------------------------------------------
 
-  const forecast =
+  const routerForecast =
     location.state?.forecast || null;
 
 
-  /*
-   * Keep the existing fallback values so the page still
-   * works when opened directly.
-   */
+  // ---------------------------------------------------------
+  // FIREBASE FORECAST
+  // ---------------------------------------------------------
 
-  const predictedMeals =
-    forecast?.predicted_meals ?? 596;
+  const [
+    firebaseForecast,
+    setFirebaseForecast,
+  ] = useState(null);
 
-  const recommendedCooking =
-    forecast?.recommended_cooking ?? 626;
 
-  const ingredients =
-    forecast?.ingredients || {
-      Rice: 48.36,
-      Dal: 19.34,
-      Vegetables: 64.48,
-      Oil: 6.45,
-      Flour: 12.9,
-      Spices: 3.22,
-    };
+  const [
+    forecastLoading,
+    setForecastLoading,
+  ] = useState(false);
 
-  const mealType =
-    forecast?.meal_type || "Lunch";
+
+  const [
+    forecastError,
+    setForecastError,
+  ] = useState("");
+
+
+  // ---------------------------------------------------------
+  // CHECKLIST
+  // ---------------------------------------------------------
+
+  const [
+    checkedItems,
+    setCheckedItems,
+  ] = useState({});
+
+
+  // =========================================================
+  // IDENTIFY FORECAST
+  // =========================================================
 
   const forecastDate =
-    forecast?.date ||
+    routerForecast?.date ||
+    routerForecast?.forecastDate ||
     new Date()
       .toISOString()
       .split("T")[0];
 
+
+  const mealType =
+    routerForecast?.meal_type ||
+    routerForecast?.mealType ||
+    "Lunch";
+
+
+  // =========================================================
+  // LOAD FORECAST FROM FIREBASE
+  // =========================================================
+  //
+  // If the Forecast page passed data through router state,
+  // we already have something to display immediately.
+  //
+  // Firebase is then loaded to make sure the page is using
+  // the saved forecast.
+  // =========================================================
+
+  useEffect(() => {
+
+    let cancelled = false;
+
+
+    const loadForecast = async () => {
+
+      try {
+
+        setForecastLoading(true);
+
+        setForecastError("");
+
+
+        const savedForecast =
+          await getPrediction(
+            forecastDate,
+            mealType
+          );
+
+
+        if (cancelled) {
+          return;
+        }
+
+
+        if (savedForecast) {
+
+          setFirebaseForecast(
+            savedForecast
+          );
+
+        } else {
+
+          // No Firebase document yet.
+          // Keep router forecast if available.
+
+          setFirebaseForecast(null);
+        }
+
+      } catch (error) {
+
+        console.error(
+          "Failed to load forecast from Firebase:",
+          error
+        );
+
+
+        if (!cancelled) {
+
+          setForecastError(
+            error?.message ||
+            "Unable to load forecast from Firebase."
+          );
+        }
+
+      } finally {
+
+        if (!cancelled) {
+
+          setForecastLoading(false);
+        }
+      }
+    };
+
+
+    loadForecast();
+
+
+    return () => {
+      cancelled = true;
+    };
+
+  }, [
+    forecastDate,
+    mealType,
+  ]);
+
+
+  // =========================================================
+  // SOURCE OF TRUTH
+  // =========================================================
+  //
+  // Firebase wins when available.
+  //
+  // Router state is used immediately while Firebase loads.
+  // =========================================================
+
+  const forecast =
+    firebaseForecast ||
+    routerForecast ||
+    null;
+
+
+  // =========================================================
+  // FORECAST VALUES
+  // =========================================================
+
+  const predictedMeals =
+    Number(
+      forecast?.predicted_meals ??
+      forecast?.predictedMeals ??
+      0
+    );
+
+
+  const recommendedCooking =
+    Number(
+      forecast?.recommended_cooking ??
+      forecast?.recommendedCooking ??
+      Math.round(
+        predictedMeals * 1.05
+      )
+    );
+
+
+  const ingredients =
+    forecast?.ingredients || {};
+
+
   const weather =
     forecast?.weather || null;
 
+
   const historicalRecords =
-    forecast?.historicalRecords ??
     forecast?.historical_records ??
+    forecast?.historicalRecords ??
     0;
 
 
-  /* =======================================================
-     INGREDIENTS
-     ======================================================= */
+  // =========================================================
+  // INGREDIENTS
+  // =========================================================
 
   const ingredientEntries =
-    Object.entries(ingredients);
+    Object.entries(
+      ingredients
+    );
 
 
-  /* =======================================================
-     CHECKLIST STATE
-     ======================================================= */
+  // =========================================================
+  // CHECKLIST
+  // =========================================================
 
-  const [checkedItems, setCheckedItems] =
-    useState({});
+  const toggleItem = (
+    ingredient
+  ) => {
 
+    setCheckedItems(
+      (previous) => ({
+        ...previous,
 
-  const toggleItem = (ingredient) => {
-    setCheckedItems((previous) => ({
-      ...previous,
-      [ingredient]:
-        !previous[ingredient],
-    }));
+        [ingredient]:
+          !previous[ingredient],
+      })
+    );
   };
 
 
-  /* =======================================================
-     PROGRESS
-     ======================================================= */
+  // =========================================================
+  // PROGRESS
+  // =========================================================
 
   const completedCount =
     ingredientEntries.filter(
@@ -163,30 +344,37 @@ export default function Preparation() {
   const progress =
     ingredientEntries.length > 0
       ? Math.round(
-          (completedCount /
-            ingredientEntries.length) *
-            100
+          (
+            completedCount /
+            ingredientEntries.length
+          ) * 100
         )
       : 0;
 
 
-  /* =======================================================
-     TOTAL INGREDIENT WEIGHT
-     ======================================================= */
+  // =========================================================
+  // TOTAL INGREDIENT WEIGHT
+  // =========================================================
 
   const totalIngredientWeight =
     useMemo(() => {
+
       return ingredientEntries.reduce(
-        (total, [, quantity]) =>
-          total + Number(quantity || 0),
+        (
+          total,
+          [, quantity]
+        ) =>
+          total +
+          Number(quantity || 0),
         0
       );
+
     }, [ingredientEntries]);
 
 
-  /* =======================================================
-     STATUS
-     ======================================================= */
+  // =========================================================
+  // STATUS
+  // =========================================================
 
   const preparationStatus =
     progress === 100
@@ -198,45 +386,206 @@ export default function Preparation() {
       : "READY TO START";
 
 
-  /* =======================================================
-     NAVIGATION
-     ======================================================= */
+  // =========================================================
+  // REFRESH FIREBASE FORECAST
+  // =========================================================
+
+  const refreshForecast =
+    async () => {
+
+      try {
+
+        setForecastLoading(true);
+
+        setForecastError("");
+
+
+        const savedForecast =
+          await getPrediction(
+            forecastDate,
+            mealType
+          );
+
+
+        if (savedForecast) {
+
+          setFirebaseForecast(
+            savedForecast
+          );
+
+          // Reset checklist when forecast
+          // changes to a newly generated plan.
+
+          setCheckedItems({});
+        }
+
+      } catch (error) {
+
+        console.error(
+          "Forecast refresh error:",
+          error
+        );
+
+
+        setForecastError(
+          error?.message ||
+          "Unable to refresh forecast."
+        );
+
+      } finally {
+
+        setForecastLoading(false);
+      }
+    };
+
+
+  // =========================================================
+  // NAVIGATION TO MEAL OPERATIONS
+  // =========================================================
 
   const goToMealOperations = () => {
-    navigate("/meal-operations", {
-      state: {
-        forecast: {
-          ...(forecast || {}),
 
-          predicted_meals:
-            predictedMeals,
+    navigate(
+      "/meal-operations",
+      {
+        state: {
+          forecast: {
 
-          recommended_cooking:
-            recommendedCooking,
+            ...(forecast || {}),
 
-          ingredients,
+            // Always send normalized values.
 
-          meal_type:
-            mealType,
+            predicted_meals:
+              predictedMeals,
 
-          date:
-            forecastDate,
+            recommended_cooking:
+              recommendedCooking,
+
+            ingredients,
+
+            meal_type:
+              mealType,
+
+            date:
+              forecastDate,
+
+            weather,
+
+            historical_records:
+              historicalRecords,
+          },
         },
-      },
-    });
+      }
+    );
   };
 
+
+  // =========================================================
+  // RESET CHECKLIST
+  // =========================================================
 
   const resetChecklist = () => {
     setCheckedItems({});
   };
 
 
-  /* =======================================================
-     RENDER
-     ======================================================= */
+  // =========================================================
+  // NO FORECAST
+  // =========================================================
+
+  if (
+    !forecastLoading &&
+    !forecast
+  ) {
+
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "24px",
+          background:
+            "#f4f8f6",
+        }}
+      >
+
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "520px",
+            padding: "40px",
+            borderRadius: "24px",
+            background: "#ffffff",
+            textAlign: "center",
+            boxShadow:
+              "0 20px 60px rgba(20,60,45,0.08)",
+          }}
+        >
+
+          <ChefHat
+            size={44}
+            style={{
+              margin: "0 auto",
+              color: "#10b981",
+            }}
+          />
+
+          <h2
+            style={{
+              marginTop: "18px",
+              fontSize: "24px",
+              fontWeight: 700,
+              color: "#17352c",
+            }}
+          >
+            No forecast found
+          </h2>
+
+          <p
+            style={{
+              marginTop: "10px",
+              color: "#71827c",
+            }}
+          >
+            Generate a forecast first to
+            create the preparation plan.
+          </p>
+
+          <button
+            onClick={() =>
+              navigate("/forecast")
+            }
+            style={{
+              marginTop: "24px",
+              padding:
+                "12px 22px",
+              border: "none",
+              borderRadius: "12px",
+              background:
+                "#10b981",
+              color: "#ffffff",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Go to Forecast
+          </button>
+
+        </div>
+
+      </div>
+    );
+  }
+
+
+  // =========================================================
+  // RENDER
+  // =========================================================
 
   return (
+
     <div className="preparation-page">
 
 
@@ -283,9 +632,7 @@ export default function Preparation() {
               }
             >
 
-              <ArrowLeft
-                size={16}
-              />
+              <ArrowLeft size={16} />
 
               <span>
                 Back to Forecast
@@ -298,9 +645,7 @@ export default function Preparation() {
 
               <div className="prep-brand-icon">
 
-                <ChefHat
-                  size={19}
-                />
+                <ChefHat size={19} />
 
               </div>
 
@@ -336,7 +681,37 @@ export default function Preparation() {
 
             <button
               className="prep-reset-button"
-              onClick={resetChecklist}
+              onClick={
+                refreshForecast
+              }
+              disabled={
+                forecastLoading
+              }
+            >
+
+              {forecastLoading ? (
+                <Loader2
+                  size={13}
+                  className="animate-spin"
+                />
+              ) : (
+                <RefreshCw
+                  size={13}
+                />
+              )}
+
+              {forecastLoading
+                ? "Loading..."
+                : "Refresh"}
+
+            </button>
+
+
+            <button
+              className="prep-reset-button"
+              onClick={
+                resetChecklist
+              }
             >
 
               <RefreshCw
@@ -362,6 +737,101 @@ export default function Preparation() {
 
 
         {/* =================================================
+            FIREBASE STATUS
+            ================================================= */}
+
+        {forecastError && (
+
+          <div
+            style={{
+              marginBottom: "18px",
+              padding:
+                "12px 16px",
+              borderRadius: "12px",
+              background:
+                "#fff7ed",
+              border:
+                "1px solid #fed7aa",
+              color:
+                "#9a3412",
+              fontSize: "13px",
+            }}
+          >
+            Firebase forecast refresh:
+            {" "}
+            {forecastError}
+          </div>
+
+        )}
+
+
+        {/* =================================================
+            DATA SOURCE STATUS
+            ================================================= */}
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent:
+              "space-between",
+            gap: "12px",
+            marginBottom: "16px",
+            padding:
+              "10px 14px",
+            borderRadius: "12px",
+            background:
+              "rgba(255,255,255,0.72)",
+            border:
+              "1px solid rgba(16,185,129,0.12)",
+            fontSize: "12px",
+          }}
+        >
+
+          <span
+            style={{
+              color:
+                "#526861",
+            }}
+          >
+
+            Forecast source:
+
+            {" "}
+
+            <strong
+              style={{
+                color:
+                  firebaseForecast
+                    ? "#059669"
+                    : "#64748b",
+              }}
+            >
+              {firebaseForecast
+                ? "Firebase"
+                : "Forecast result"}
+            </strong>
+
+          </span>
+
+
+          <span
+            style={{
+              color:
+                "#64748b",
+            }}
+          >
+            {mealType}
+            {" · "}
+            {formatDate(
+              forecastDate
+            )}
+          </span>
+
+        </div>
+
+
+        {/* =================================================
             TOP HERO
             ================================================= */}
 
@@ -384,9 +854,11 @@ export default function Preparation() {
             <h1>
 
               Turn the forecast
+
               <br />
 
               into a{" "}
+
               <em>
                 kitchen plan.
               </em>
@@ -395,10 +867,15 @@ export default function Preparation() {
 
 
             <p>
-              ReFeed has converted the AI demand
-              prediction into precise cooking quantities.
-              Prepare the ingredients, confirm readiness,
-              then move directly into meal operations.
+
+              ReFeed has converted the
+              AI demand prediction into
+              precise cooking quantities.
+              Prepare the ingredients,
+              confirm readiness, then
+              move directly into meal
+              operations.
+
             </p>
 
 
@@ -414,6 +891,7 @@ export default function Preparation() {
                 )} meals`}
               />
 
+
               <HeroTag
                 icon={
                   <ChefHat size={13} />
@@ -423,6 +901,7 @@ export default function Preparation() {
                   recommendedCooking
                 )} meals`}
               />
+
 
               <HeroTag
                 icon={
@@ -476,7 +955,7 @@ export default function Preparation() {
               className="prep-float-rice"
               name="RICE"
               quantity={
-                ingredients.Rice
+                ingredients.Rice != null
                   ? `${formatQuantity(
                       ingredients.Rice
                     )} kg`
@@ -492,7 +971,7 @@ export default function Preparation() {
               className="prep-float-dal"
               name="DAL"
               quantity={
-                ingredients.Dal
+                ingredients.Dal != null
                   ? `${formatQuantity(
                       ingredients.Dal
                     )} kg`
@@ -508,7 +987,7 @@ export default function Preparation() {
               className="prep-float-veg"
               name="VEGETABLES"
               quantity={
-                ingredients.Vegetables
+                ingredients.Vegetables != null
                   ? `${formatQuantity(
                       ingredients.Vegetables
                     )} kg`
@@ -617,6 +1096,7 @@ export default function Preparation() {
             )}
           />
 
+
           <SummaryCard
             icon={
               <Users
@@ -629,6 +1109,7 @@ export default function Preparation() {
             )}`}
             description="Meals expected"
           />
+
 
           <SummaryCard
             icon={
@@ -643,6 +1124,7 @@ export default function Preparation() {
             description="Includes 5% safety buffer"
             highlighted
           />
+
 
           <SummaryCard
             icon={
@@ -709,7 +1191,13 @@ export default function Preparation() {
             <div className="ingredient-list">
 
               {ingredientEntries.map(
-                ([ingredient, quantity], index) => {
+                (
+                  [
+                    ingredient,
+                    quantity,
+                  ],
+                  index
+                ) => {
 
                   const completed =
                     Boolean(
@@ -718,7 +1206,9 @@ export default function Preparation() {
                       ]
                     );
 
+
                   return (
+
                     <IngredientRow
                       key={ingredient}
                       index={index}
@@ -737,11 +1227,33 @@ export default function Preparation() {
                         )
                       }
                     />
+
                   );
+
                 }
               )}
 
             </div>
+
+
+            {ingredientEntries.length ===
+              0 && (
+
+              <div
+                style={{
+                  padding:
+                    "40px 20px",
+                  textAlign:
+                    "center",
+                  color:
+                    "#71827c",
+                }}
+              >
+                No ingredient data was
+                returned by the forecast.
+              </div>
+
+            )}
 
 
             {/* TABLE FOOTER */}
@@ -765,9 +1277,13 @@ export default function Preparation() {
                   </span>
 
                   <strong>
+
                     {completedCount} of{" "}
+
                     {ingredientEntries.length}{" "}
+
                     ingredients ready
+
                   </strong>
 
                 </div>
@@ -776,7 +1292,9 @@ export default function Preparation() {
 
 
               <span className="footer-percentage">
+
                 {progress}%
+
               </span>
 
             </div>
@@ -808,6 +1326,7 @@ export default function Preparation() {
                 progress={progress}
               />
 
+
               <div className="progress-copy">
 
                 <span>
@@ -819,8 +1338,11 @@ export default function Preparation() {
                 </h3>
 
                 <p>
+
                   {progress === 100
+
                     ? "All ingredient requirements have been confirmed. The kitchen is ready for meal operations."
+
                     : `${ingredientEntries.length - completedCount} ingredient${
                         ingredientEntries.length -
                           completedCount ===
@@ -834,6 +1356,7 @@ export default function Preparation() {
                           ? "s"
                           : ""
                       } preparation.`}
+
                 </p>
 
               </div>
@@ -852,20 +1375,24 @@ export default function Preparation() {
                 </span>
 
                 <strong>
+
                   {completedCount}/
                   {
                     ingredientEntries.length
                   }
+
                 </strong>
 
               </div>
+
 
               <div className="large-progress-track">
 
                 <div
                   className="large-progress-fill"
                   style={{
-                    width: `${progress}%`,
+                    width:
+                      `${progress}%`,
                   }}
                 >
 
@@ -894,6 +1421,7 @@ export default function Preparation() {
                 )} meals predicted`}
               />
 
+
               <QuickCheck
                 icon={
                   <Check
@@ -905,6 +1433,7 @@ export default function Preparation() {
                   recommendedCooking
                 )} meals`}
               />
+
 
               <QuickCheck
                 icon={
@@ -1014,17 +1543,23 @@ export default function Preparation() {
               predictedMeals
             )} meals`}
             icon={
-              <Users size={14} />
+              <Users
+                size={14}
+              />
             }
           />
+
 
           <IntelligenceMetric
             label="Cooking buffer"
             value="+5%"
             icon={
-              <ChefHat size={14} />
+              <ChefHat
+                size={14}
+              />
             }
           />
+
 
           <IntelligenceMetric
             label="Ingredient load"
@@ -1032,9 +1567,12 @@ export default function Preparation() {
               totalIngredientWeight
             )} kg`}
             icon={
-              <Package size={14} />
+              <Package
+                size={14}
+              />
             }
           />
+
 
           <IntelligenceMetric
             label="Historical records"
@@ -1046,7 +1584,9 @@ export default function Preparation() {
                 : "Available"
             }
             icon={
-              <Database size={14} />
+              <Database
+                size={14}
+              />
             }
           />
 
@@ -1076,22 +1616,30 @@ export default function Preparation() {
               </span>
 
               <strong>
+
                 {weather?.temperature != null
                   ? `${Number(
                       weather.temperature
                     ).toFixed(0)}°C`
                   : "Forecast context"}
+
               </strong>
 
               <p>
+
                 {weather
+
                   ? `${Number(
                       weather.rainfallMm || 0
-                    ).toFixed(1)} mm rainfall · ${
+                    ).toFixed(
+                      1
+                    )} mm rainfall · ${
                       weather.description ||
                       "Weather signal supplied"
                     }`
+
                   : "Weather context was supplied to the forecast engine."}
+
               </p>
 
             </div>
@@ -1198,6 +1746,7 @@ export default function Preparation() {
 
         </section>
 
+
       </main>
 
     </div>
@@ -1205,16 +1754,18 @@ export default function Preparation() {
 }
 
 
-/* =========================================================
-   COMPONENTS
-   ========================================================= */
+// =========================================================
+// COMPONENTS
+// =========================================================
 
 function HeroTag({
   icon,
   label,
   value,
 }) {
+
   return (
+
     <div className="prep-hero-tag">
 
       <div className="hero-tag-icon">
@@ -1238,13 +1789,17 @@ function HeroTag({
 }
 
 
+// =========================================================
+
 function FloatingIngredient({
   className,
   name,
   quantity,
   icon,
 }) {
+
   return (
+
     <div
       className={`prep-floating-card ${className}`}
     >
@@ -1270,6 +1825,8 @@ function FloatingIngredient({
 }
 
 
+// =========================================================
+
 function PipelineNode({
   number,
   title,
@@ -1278,7 +1835,9 @@ function PipelineNode({
   completed = false,
   active = false,
 }) {
+
   return (
+
     <div
       className={`pipeline-node ${
         completed
@@ -1294,9 +1853,7 @@ function PipelineNode({
       <div className="pipeline-node-icon">
 
         {completed ? (
-          <Check
-            size={14}
-          />
+          <Check size={14} />
         ) : (
           icon
         )}
@@ -1324,10 +1881,14 @@ function PipelineNode({
 }
 
 
+// =========================================================
+
 function PipelineConnector({
   active = false,
 }) {
+
   return (
+
     <div
       className={`pipeline-connector ${
         active
@@ -1335,9 +1896,12 @@ function PipelineConnector({
           : ""
       }`}
     />
+
   );
 }
 
+
+// =========================================================
 
 function SummaryCard({
   icon,
@@ -1346,7 +1910,9 @@ function SummaryCard({
   description,
   highlighted = false,
 }) {
+
   return (
+
     <div
       className={`prep-summary-card ${
         highlighted
@@ -1380,13 +1946,17 @@ function SummaryCard({
 }
 
 
+// =========================================================
+
 function CardHeading({
   eyebrow,
   title,
   description,
   icon,
 }) {
+
   return (
+
     <div className="prep-card-heading">
 
       <div className="card-heading-icon">
@@ -1414,6 +1984,8 @@ function CardHeading({
 }
 
 
+// =========================================================
+
 function IngredientRow({
   ingredient,
   quantity,
@@ -1421,7 +1993,9 @@ function IngredientRow({
   onToggle,
   index,
 }) {
+
   return (
+
     <div
       className={`ingredient-row ${
         completed
@@ -1433,15 +2007,22 @@ function IngredientRow({
       <div className="ingredient-name">
 
         <div className="ingredient-number">
+
           {String(
             index + 1
-          ).padStart(2, "0")}
+          ).padStart(
+            2,
+            "0"
+          )}
+
         </div>
 
         <div className="ingredient-symbol">
+
           <Utensils
             size={14}
           />
+
         </div>
 
         <div>
@@ -1501,7 +2082,9 @@ function IngredientRow({
             ? "ready"
             : ""
         }`}
-        onClick={onToggle}
+        onClick={
+          onToggle
+        }
       >
 
         {completed ? (
@@ -1529,9 +2112,12 @@ function IngredientRow({
 }
 
 
+// =========================================================
+
 function ProgressRing({
   progress,
 }) {
+
   const radius = 52;
 
   const circumference =
@@ -1544,7 +2130,9 @@ function ProgressRing({
     (progress / 100) *
       circumference;
 
+
   return (
+
     <div className="progress-ring-wrapper">
 
       <svg
@@ -1580,10 +2168,13 @@ function ProgressRing({
       <div className="progress-ring-content">
 
         <strong>
+
           {progress}
+
           <span>
             %
           </span>
+
         </strong>
 
         <small>
@@ -1597,12 +2188,16 @@ function ProgressRing({
 }
 
 
+// =========================================================
+
 function QuickCheck({
   icon,
   title,
   description,
 }) {
+
   return (
+
     <div className="quick-check">
 
       <div className="quick-check-icon">
@@ -1626,12 +2221,16 @@ function QuickCheck({
 }
 
 
+// =========================================================
+
 function IntelligenceMetric({
   icon,
   label,
   value,
 }) {
+
   return (
+
     <div className="intelligence-metric">
 
       <div className="intelligence-metric-icon">
@@ -1655,8 +2254,12 @@ function IntelligenceMetric({
 }
 
 
+// =========================================================
+
 function GaugeIcon() {
+
   return (
+
     <svg
       width="18"
       height="18"
