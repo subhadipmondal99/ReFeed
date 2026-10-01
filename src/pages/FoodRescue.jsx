@@ -1,5 +1,12 @@
-import { useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import {
+  useMemo,
+  useState,
+} from "react";
+
+import {
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 
 import {
   AlertCircle,
@@ -8,8 +15,10 @@ import {
   Check,
   CheckCircle2,
   Clock3,
+  Database,
   HeartHandshake,
   Leaf,
+  Loader2,
   MapPin,
   PackageCheck,
   Phone,
@@ -19,8 +28,15 @@ import {
   Sparkles,
   Truck,
   Users,
-  Zap,
 } from "lucide-react";
+
+import {
+  addDoc,
+  collection,
+  serverTimestamp,
+} from "firebase/firestore";
+
+import { db } from "../firebase/auth";
 
 import {
   createSurplusEvent,
@@ -29,12 +45,14 @@ import {
   SURPLUS_THRESHOLD,
 } from "../services/surplusService";
 
-import { createDonation } from "../services/donationService";
-
 import "./FoodRescue.css";
+
 
 /* =========================================================
    DEMO NGO DATA
+
+   Later this can come directly from:
+   Firestore -> ngos collection
    ========================================================= */
 
 const DEMO_NGOS = [
@@ -47,556 +65,890 @@ const DEMO_NGOS = [
     phone: "+91 98765 43210",
     responseTime: "15–20 min",
   },
+
   {
     id: "ngo-food-for-all",
     name: "Food For All",
     distance: "2.6 km",
     distanceKm: 2.6,
-    capacity: 80,
+    capacity: 180,
     phone: "+91 91234 56789",
     responseTime: "20–25 min",
   },
+
   {
     id: "ngo-community-kitchen",
     name: "Community Kitchen",
     distance: "3.4 km",
     distanceKm: 3.4,
-    capacity: 150,
+    capacity: 250,
     phone: "+91 99887 66554",
     responseTime: "25–30 min",
   },
 ];
 
+
 /* =========================================================
-   MAIN PAGE
+   HELPERS
+   ========================================================= */
+
+const getToday = () => {
+  return new Date()
+    .toISOString()
+    .split("T")[0];
+};
+
+
+const formatNumber = (value) => {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return "0";
+  }
+
+  return number.toLocaleString("en-IN");
+};
+
+
+const formatShelfLife = (minutes) => {
+  const value = Number(minutes) || 120;
+
+  if (value >= 60) {
+    const hours = Math.floor(value / 60);
+    const mins = value % 60;
+
+    return `${hours} hour${hours !== 1 ? "s" : ""
+      }${mins ? ` ${mins} min` : ""}`;
+  }
+
+  return `${value} min`;
+};
+
+
+const formatDate = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(
+    `${value}T00:00:00`
+  );
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleDateString(
+    "en-IN",
+    {
+      weekday: "long",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }
+  );
+};
+
+
+/* =========================================================
+   MAIN COMPONENT
    ========================================================= */
 
 export default function FoodRescue() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const rescueData = location.state || {};
+  const incomingData =
+    location.state || {};
+
 
   /* =======================================================
      INPUT DATA
      ======================================================= */
 
   const date =
-    rescueData.date ||
-    new Date().toISOString().split("T")[0];
+    incomingData.date ||
+    getToday();
 
   const mealType =
-    rescueData.mealType ||
-    rescueData.meal_type ||
+    incomingData.mealType ||
+    incomingData.meal_type ||
     "Lunch";
 
   const predictedMeals =
     Number(
-      rescueData.predictedMeals ??
-        rescueData.predicted_meals ??
-        0
+      incomingData.predictedMeals ??
+      incomingData.predicted_meals ??
+      0
     ) || 0;
 
   const preparedMeals =
     Number(
-      rescueData.cookedMeals ??
-        rescueData.preparedMeals ??
-        rescueData.prepared ??
-        rescueData.recommendedCooking ??
-        0
+      incomingData.cookedMeals ??
+      incomingData.preparedMeals ??
+      incomingData.prepared ??
+      incomingData.recommendedCooking ??
+      0
     ) || 0;
 
   const servedMeals =
     Number(
-      rescueData.servedMeals ??
-        rescueData.served ??
-        0
+      incomingData.servedMeals ??
+      incomingData.served ??
+      0
     ) || 0;
 
   const dayType =
-    rescueData.dayType ||
+    incomingData.dayType ||
+    incomingData.day_type ||
     "regular";
 
   const campusPopulation =
     Number(
-      rescueData.campusPopulation ??
-        1000
+      incomingData.campusPopulation ??
+      incomingData.campus_population ??
+      1000
     ) || 1000;
 
   const pickupLocation =
-    rescueData.pickupLocation ||
+    incomingData.pickupLocation ||
+    incomingData.location ||
     "Main Campus Canteen";
 
   const shelfLifeMinutes =
     Number(
-      rescueData.shelfLifeMinutes ??
-        120
+      incomingData.shelfLifeMinutes ??
+      120
     ) || 120;
 
+
   /* =======================================================
-     CALCULATE SURPLUS
+     SURPLUS
      ======================================================= */
 
-  const remainingMeals = useMemo(
-    () =>
-      calculateRemainingMeals({
-        prepared: preparedMeals,
-        served: servedMeals,
-      }),
-    [preparedMeals, servedMeals]
-  );
+  const remainingMeals = useMemo(() => {
+    return calculateRemainingMeals({
+      prepared: preparedMeals,
+      served: servedMeals,
+    });
+  }, [
+    preparedMeals,
+    servedMeals,
+  ]);
+
 
   const surplusDetected =
     isSurplus(remainingMeals);
+
 
   /* =======================================================
      STATE
      ======================================================= */
 
-  const [selectedNgo, setSelectedNgo] =
-    useState(null);
+  const [
+    selectedNgo,
+    setSelectedNgo,
+  ] = useState(null);
 
-  const [creatingSurplus, setCreatingSurplus] =
-    useState(false);
+  const [
+    surplusEvent,
+    setSurplusEvent,
+  ] = useState(null);
 
-  const [sendingDonation, setSendingDonation] =
-    useState(false);
+  const [
+    donation,
+    setDonation,
+  ] = useState(null);
 
-  const [surplusEvent, setSurplusEvent] =
-    useState(null);
+  const [
+    creatingSurplus,
+    setCreatingSurplus,
+  ] = useState(false);
 
-  const [donation, setDonation] =
-    useState(null);
+  const [
+    sendingDonation,
+    setSendingDonation,
+  ] = useState(false);
 
-  const [error, setError] =
-    useState("");
+  const [
+    error,
+    setError,
+  ] = useState("");
 
-  const [successMessage, setSuccessMessage] =
-    useState("");
+  const [
+    successMessage,
+    setSuccessMessage,
+  ] = useState("");
+
 
   /* =======================================================
-     DERIVED DATA
+     DERIVED
      ======================================================= */
-
-  const rescueProgress =
-    donation
-      ? 100
-      : selectedNgo
-      ? 75
-      : surplusEvent
-      ? 50
-      : surplusDetected
-      ? 25
-      : 0;
-
-  const formattedShelfLife =
-    shelfLifeMinutes >= 60
-      ? `${Math.floor(
-          shelfLifeMinutes / 60
-        )} hour${
-          Math.floor(
-            shelfLifeMinutes / 60
-          ) !== 1
-            ? "s"
-            : ""
-        }${
-          shelfLifeMinutes % 60
-            ? ` ${shelfLifeMinutes % 60} min`
-            : ""
-        }`
-      : `${shelfLifeMinutes} min`;
-
-  /*
-   * IMPORTANT:
-   * An NGO does NOT need to accept the complete surplus.
-   *
-   * Example:
-   * Surplus = 488
-   * NGO capacity = 120
-   * Pickup = 120
-   *
-   * This allows partial NGO pickup.
-   */
-
-  const selectedNgoCanHandle =
-    Boolean(selectedNgo) &&
-    Number(selectedNgo?.capacity || 0) > 0;
 
   const pickupMeals = selectedNgo
     ? Math.min(
-        remainingMeals,
-        Number(selectedNgo.capacity || 0)
+      remainingMeals,
+      Number(
+        selectedNgo.capacity || 0
       )
+    )
     : 0;
 
-  const remainingAfterPickup = Math.max(
-    0,
-    remainingMeals - pickupMeals
-  );
+
+  const remainingAfterPickup =
+    Math.max(
+      0,
+      remainingMeals -
+      pickupMeals
+    );
+
+
+  const formattedShelfLife =
+    formatShelfLife(
+      shelfLifeMinutes
+    );
+
+
+  const progress =
+    donation
+      ? 100
+      : selectedNgo
+        ? 75
+        : surplusEvent
+          ? 50
+          : surplusDetected
+            ? 25
+            : 0;
+
 
   /* =======================================================
      CREATE SURPLUS EVENT
      ======================================================= */
 
-  const handleCreateSurplus = async () => {
-    setError("");
-    setSuccessMessage("");
+  const handleCreateSurplus =
+    async () => {
 
-    if (!surplusDetected) {
-      setError(
-        `Surplus must be greater than ${SURPLUS_THRESHOLD} meals before rescue can be initiated.`
-      );
-      return;
-    }
+      setError("");
+      setSuccessMessage("");
 
-    try {
-      setCreatingSurplus(true);
-
-      const result =
-        await createSurplusEvent({
-          canteenId:
-            "main-campus-canteen",
-
-          date,
-
-          mealType,
-
-          predictedMeals,
-
-          prepared:
-            preparedMeals,
-
-          served:
-            servedMeals,
-
-          dayType,
-
-          campusPopulation,
-
-          location:
-            pickupLocation,
-
-          shelfLifeMinutes,
-        });
-
-      if (!result?.surplus) {
+      if (!surplusDetected) {
         setError(
-          result?.message ||
-            "No qualifying surplus was detected."
+          `Rescue activates only when more than ${SURPLUS_THRESHOLD} meals remain.`
         );
+
         return;
       }
 
-      setSurplusEvent(result);
 
-      setSuccessMessage(
-        `Surplus event created successfully for ${result.remaining} meals.`
-      );
-    } catch (err) {
-      console.error(
-        "Create surplus error:",
-        err
-      );
+      if (
+        preparedMeals <= 0
+      ) {
+        setError(
+          "Please provide a valid prepared meal count."
+        );
 
-      setError(
-        err?.message ||
-          "Unable to create surplus event."
-      );
-    } finally {
-      setCreatingSurplus(false);
-    }
-  };
+        return;
+      }
+
+
+      if (
+        servedMeals < 0 ||
+        servedMeals > preparedMeals
+      ) {
+        setError(
+          "Served meals must be between 0 and the prepared meal count."
+        );
+
+        return;
+      }
+
+
+      try {
+
+        setCreatingSurplus(
+          true
+        );
+
+
+        const result =
+          await createSurplusEvent({
+            canteenId:
+              "main-campus-canteen",
+
+            date,
+
+            mealType,
+
+            predictedMeals,
+
+            prepared:
+              preparedMeals,
+
+            served:
+              servedMeals,
+
+            dayType,
+
+            campusPopulation,
+
+            location:
+              pickupLocation,
+
+            shelfLifeMinutes,
+          });
+
+
+        if (
+          !result?.surplus
+        ) {
+          setError(
+            result?.message ||
+            `Only ${remainingMeals} meals remain.`
+          );
+
+          return;
+        }
+
+
+        setSurplusEvent(
+          result
+        );
+
+
+        setSuccessMessage(
+          `Surplus event saved to Firebase: ${result.remaining} meals are ready for rescue.`
+        );
+
+      } catch (err) {
+
+        console.error(
+          "Surplus creation error:",
+          err
+        );
+
+        setError(
+          err?.message ||
+          "Unable to save the surplus event."
+        );
+
+      } finally {
+
+        setCreatingSurplus(
+          false
+        );
+
+      }
+    };
+
 
   /* =======================================================
      SELECT NGO
      ======================================================= */
 
-  const handleSelectNgo = (ngo) => {
-    const capacity =
-      Number(ngo?.capacity || 0);
+  const handleSelectNgo =
+    (ngo) => {
 
-    if (!ngo || capacity <= 0) {
-      setError(
-        "This NGO currently has no available pickup capacity."
+      setError("");
+      setSuccessMessage("");
+
+      if (!ngo) {
+        return;
+      }
+
+
+      if (
+        Number(
+          ngo.capacity || 0
+        ) <= 0
+      ) {
+        setError(
+          `${ngo.name} currently has no available pickup capacity.`
+        );
+
+        return;
+      }
+
+
+      setSelectedNgo(
+        ngo
       );
-      return;
-    }
+    };
 
-    setError("");
-    setSuccessMessage("");
-    setSelectedNgo(ngo);
-  };
 
   /* =======================================================
-     SEND DONATION
+     SEND PICKUP REQUEST
+
+     IMPORTANT:
+     This directly writes the notification into:
+
+       donations/{auto-generated-id}
+
+     BEFORE navigating anywhere.
+
+     Therefore the request survives page changes.
      ======================================================= */
 
-  const handleSendNotification = async () => {
-    setError("");
-    setSuccessMessage("");
+  const handleSendPickupRequest =
+    async () => {
 
-    if (!surplusEvent?.id) {
-      setError(
-        "Create the surplus event before notifying an NGO."
-      );
-      return;
-    }
+      setError("");
+      setSuccessMessage("");
 
-    if (!selectedNgo) {
-      setError(
-        "Please select an NGO for pickup."
-      );
-      return;
-    }
 
-    if (
-      Number(selectedNgo.capacity || 0) <= 0
-    ) {
-      setError(
-        `${selectedNgo.name} currently has no available pickup capacity.`
-      );
-      return;
-    }
+      if (!surplusEvent?.id) {
+        setError(
+          "Please record the surplus before sending the pickup request."
+        );
 
-    try {
-      setSendingDonation(true);
+        return;
+      }
 
-      const result =
-        await createDonation({
+
+      if (!selectedNgo) {
+        setError(
+          "Please select an NGO first."
+        );
+
+        return;
+      }
+
+
+      if (
+        pickupMeals <= 0
+      ) {
+        setError(
+          "There are no meals available for this pickup."
+        );
+
+        return;
+      }
+
+
+      try {
+
+        setSendingDonation(
+          true
+        );
+
+
+        /* ---------------------------------------------
+           FIREBASE DONATION DOCUMENT
+           --------------------------------------------- */
+
+        const donationData = {
+
+          /* Identity */
+
+          notificationType:
+            "pickup_request",
+
+          workflow:
+            "food_rescue",
+
+          source:
+            "campus_canteen",
+
+
+          /* Surplus reference */
+
           surplusEventId:
             surplusEvent.id,
+
+
+          /* Meal */
 
           date,
 
           mealType,
 
-          predictedMeals,
+          predictedMeals:
+            Number(
+              predictedMeals
+            ),
 
-          preparedMeals,
+          preparedMeals:
+            Number(
+              preparedMeals
+            ),
 
-          servedMeals,
+          servedMeals:
+            Number(
+              servedMeals
+            ),
 
-          /*
-           * Actual quantity this NGO will pick up.
-           */
-          surplusMeals:
-            pickupMeals,
 
-          /*
-           * Keep the original total surplus
-           * for tracking and reporting.
-           */
+          /* Surplus */
+
           totalSurplusMeals:
-            remainingMeals,
+            Number(
+              remainingMeals
+            ),
 
-          pickupMeals,
+          surplusMeals:
+            Number(
+              pickupMeals
+            ),
 
-          remainingAfterPickup,
+          pickupMeals:
+            Number(
+              pickupMeals
+            ),
+
+          remainingAfterPickup:
+            Number(
+              remainingAfterPickup
+            ),
+
+
+          /* Pickup */
 
           pickupLocation,
 
           shelfLife:
             formattedShelfLife,
 
-          shelfLifeMinutes,
+          shelfLifeMinutes:
+            Number(
+              shelfLifeMinutes
+            ),
 
-          ngo:
-            selectedNgo,
+
+          /* NGO */
+
+          ngo: {
+            id:
+              selectedNgo.id,
+
+            name:
+              selectedNgo.name,
+
+            phone:
+              selectedNgo.phone,
+
+            distance:
+              selectedNgo.distance,
+
+            distanceKm:
+              Number(
+                selectedNgo.distanceKm ||
+                0
+              ),
+
+            capacity:
+              Number(
+                selectedNgo.capacity ||
+                0
+              ),
+
+            responseTime:
+              selectedNgo.responseTime,
+          },
+
+
+          /* -----------------------------------------
+             WORKFLOW STATUS
+
+             These fields are important because the
+             NGO page and Dashboard will read them.
+             ----------------------------------------- */
 
           status:
             "Pickup Pending",
 
+          ngoStatus:
+            "Pending",
+
+          notificationStatus:
+            "Unread",
+
+          notificationRead:
+            false,
+
+          accepted:
+            false,
+
+          acceptedAt:
+            null,
+
+          acceptedBy:
+            null,
+
+          pickupStarted:
+            false,
+
+          pickedUp:
+            false,
+
+          completed:
+            false,
+
+
+          /* Checklist */
+
+          checklist: {
+            requestSent:
+              true,
+
+            ngoAccepted:
+              false,
+
+            pickupLocationConfirmed:
+              false,
+
+            mealsConfirmed:
+              false,
+
+            pickupStarted:
+              false,
+
+            foodCollected:
+              false,
+
+            completed:
+              false,
+          },
+
+
+          /* Extra */
+
+          dayType,
+
+          campusPopulation:
+            Number(
+              campusPopulation
+            ),
+
           notes:
             "Surplus generated from campus canteen meal operations.",
-        });
 
-      setDonation(result);
 
-      setSuccessMessage(
-        `${selectedNgo.name} has been notified for pickup.`
-      );
+          /* Firebase */
 
-      navigate("/donations", {
-        state: {
-          donationId:
-            result.id,
+          createdAt:
+            serverTimestamp(),
 
-          surplusEventId:
-            surplusEvent.id,
+          updatedAt:
+            serverTimestamp(),
+        };
 
-          date,
 
-          mealType,
+        /* ---------------------------------------------
+           SAVE FIRST
+           --------------------------------------------- */
 
-          predictedMeals,
+        const donationRef =
+          await addDoc(
+            collection(
+              db,
+              "donations"
+            ),
+            donationData
+          );
 
-          preparedMeals,
 
-          servedMeals,
+        /* ---------------------------------------------
+           LOCAL SUCCESS
+           --------------------------------------------- */
 
-          surplusMeals:
-            pickupMeals,
+        const savedDonation = {
+          id:
+            donationRef.id,
 
-          totalSurplusMeals:
-            remainingMeals,
+          ...donationData,
+        };
 
-          pickupMeals,
 
-          remainingAfterPickup,
+        setDonation(
+          savedDonation
+        );
 
-          pickupLocation,
 
-          shelfLifeMinutes,
+        setSuccessMessage(
+          `Pickup request sent to ${selectedNgo.name}. The request is now stored in Firebase.`
+        );
 
-          ngo:
-            selectedNgo,
-        },
-      });
-    } catch (err) {
-      console.error(
-        "Donation creation error:",
-        err
-      );
 
-      setError(
-        err?.message ||
-          "Unable to create the donation request."
-      );
-    } finally {
-      setSendingDonation(false);
-    }
-  };
+        /* ---------------------------------------------
+           IMPORTANT:
+
+           Navigate only AFTER Firebase succeeds.
+           --------------------------------------------- */
+
+        setTimeout(() => {
+
+          navigate(
+            "/donations",
+            {
+              state: {
+                donationId:
+                  donationRef.id,
+              },
+            }
+          );
+
+        }, 700);
+
+
+      } catch (err) {
+
+        console.error(
+          "Firebase pickup request error:",
+          err
+        );
+
+        setError(
+          err?.message ||
+          "Pickup request could not be saved to Firebase."
+        );
+
+      } finally {
+
+        setSendingDonation(
+          false
+        );
+
+      }
+    };
+
 
   /* =======================================================
      BACK
      ======================================================= */
 
-  const handleBack = () => {
-    navigate(
-      "/meal-operations",
-      {
-        state: {
-          date,
+  const handleBack =
+    () => {
 
-          mealType,
+      navigate(
+        "/meal-operations",
+        {
+          state: {
+            date,
+            mealType,
+            predictedMeals,
+            cookedMeals:
+              preparedMeals,
+            servedMeals,
+            dayType,
+            campusPopulation,
+          },
+        }
+      );
+    };
 
-          predictedMeals,
-
-          cookedMeals:
-            preparedMeals,
-
-          servedMeals,
-
-          dayType,
-
-          campusPopulation,
-        },
-      }
-    );
-  };
 
   /* =======================================================
-     IMPACT
+     RESET
      ======================================================= */
 
-  const estimatedPeopleHelped =
-    remainingMeals;
+  const handleReset =
+    () => {
 
-  const estimatedWeight =
-    (remainingMeals * 0.35).toFixed(1);
+      setSelectedNgo(null);
+      setSurplusEvent(null);
+      setDonation(null);
+      setError("");
+      setSuccessMessage("");
+    };
 
-  const estimatedCo2 =
-    (remainingMeals * 0.45).toFixed(1);
 
   /* =======================================================
      RENDER
      ======================================================= */
 
   return (
+
     <div className="food-rescue-page">
 
-      {/* =================================================
-          BACKGROUND
-          ================================================= */}
+      {/* BACKGROUND */}
 
-      <div className="rescue-bg">
-        <div className="rescue-grid-bg" />
-
-        <div className="rescue-glow rescue-glow-one" />
-
-        <div className="rescue-glow rescue-glow-two" />
-
-        <div className="rescue-glow rescue-glow-three" />
-
-        <span className="rescue-particle p1" />
-        <span className="rescue-particle p2" />
-        <span className="rescue-particle p3" />
-        <span className="rescue-particle p4" />
-        <span className="rescue-particle p5" />
+      <div
+        className="rescue-background"
+        aria-hidden="true"
+      >
+        <div className="rescue-glow glow-one" />
+        <div className="rescue-glow glow-two" />
+        <div className="rescue-grid" />
       </div>
 
-      {/* =================================================
+
+      {/* ===================================================
           HEADER
-          ================================================= */}
+          =================================================== */}
 
       <header className="food-rescue-header">
+
         <div className="food-rescue-header-inner">
 
           <button
-            className="food-rescue-back"
+            type="button"
+            className="rescue-back-button"
             onClick={handleBack}
           >
-            <ArrowLeft size={16} />
+            <ArrowLeft size={18} />
 
             <span>
               Meal Operations
             </span>
           </button>
 
-          <div className="food-rescue-title">
 
-            <div className="food-rescue-title-icon">
+          <div className="rescue-brand">
+
+            <div className="rescue-brand-icon">
               <HeartHandshake
                 size={21}
               />
             </div>
 
             <div>
-              <h1>
-                Food Rescue
-              </h1>
 
-              <p>
-                Community rescue command center
-              </p>
+              <strong>
+                Food Rescue
+              </strong>
+
+              <span>
+                Surplus → Community
+              </span>
+
             </div>
 
           </div>
 
-          <div className="rescue-live-indicator">
+
+          <div className="firebase-status">
+
             <span />
-            RESCUE NETWORK ONLINE
+
+            Firebase connected
+
           </div>
 
         </div>
+
       </header>
+
+
+      {/* ===================================================
+          MAIN
+          =================================================== */}
 
       <main className="food-rescue-container">
 
+
         {/* =================================================
-            ALERTS
+            ALERT
             ================================================= */}
 
         {error && (
-          <div className="food-rescue-alert error">
 
-            <div className="alert-icon">
-              <AlertCircle
-                size={18}
-              />
-            </div>
+          <div className="rescue-alert error">
+
+            <AlertCircle
+              size={22}
+            />
 
             <div>
+
               <strong>
                 Action required
               </strong>
@@ -604,29 +956,24 @@ export default function FoodRescue() {
               <p>
                 {error}
               </p>
-            </div>
 
-            <button
-              onClick={() =>
-                setError("")
-              }
-            >
-              ×
-            </button>
+            </div>
 
           </div>
+
         )}
 
-        {successMessage && (
-          <div className="food-rescue-alert success">
 
-            <div className="alert-icon">
-              <CheckCircle2
-                size={18}
-              />
-            </div>
+        {successMessage && (
+
+          <div className="rescue-alert success">
+
+            <CheckCircle2
+              size={22}
+            />
 
             <div>
+
               <strong>
                 Rescue workflow updated
               </strong>
@@ -634,10 +981,13 @@ export default function FoodRescue() {
               <p>
                 {successMessage}
               </p>
+
             </div>
 
           </div>
+
         )}
+
 
         {/* =================================================
             HERO
@@ -645,105 +995,103 @@ export default function FoodRescue() {
 
         <section className="rescue-hero">
 
-          <div className="rescue-hero-copy">
+          <div className="hero-content">
 
-            <div className="rescue-eyebrow">
+            <div className="hero-eyebrow">
+
               <span />
-              STEP 04 · FOOD RESCUE
+
+              FOOD RESCUE COMMAND CENTER
+
             </div>
 
-            <h2>
-              Rescue food.
-              <br />
-              <em>Restore impact.</em>
-            </h2>
+
+            <h1>
+              Rescue surplus
+              <em> before it becomes waste.</em>
+            </h1>
+
 
             <p>
-              ReFeed has detected unused meals.
-              Convert the surplus into a traceable
-              community donation before its shelf
-              life expires.
+              ReFeed identifies unused meals,
+              records the surplus, finds a pickup
+              partner and creates a traceable
+              donation request.
             </p>
 
-            <div className="rescue-hero-actions">
 
-              <div className="hero-status-pill">
-                <HeartHandshake
-                  size={14}
-                />
+            <div className="hero-tags">
 
-                {surplusDetected
-                  ? "Surplus detected"
-                  : "Monitoring surplus"}
+              <div>
+                <Database size={15} />
+                Firebase tracked
               </div>
 
-              <div className="hero-status-pill">
-                <Clock3
-                  size={14}
-                />
+              <div>
+                <HeartHandshake size={15} />
+                NGO dispatch
+              </div>
 
-                {formattedShelfLife}
-                {" "}
-                shelf life
+              <div>
+                <CheckCircle2 size={15} />
+                Full workflow
               </div>
 
             </div>
 
           </div>
 
-          {/* =================================================
-              3D RESCUE CORE
-              ================================================= */}
 
-          <div className="rescue-hero-visual">
+          <div className="hero-visual">
 
-            <div className="rescue-orbit orbit-a" />
-            <div className="rescue-orbit orbit-b" />
-            <div className="rescue-orbit orbit-c" />
-
-            <div className="rescue-core-shadow" />
+            <div className="rescue-orbit orbit-one" />
+            <div className="rescue-orbit orbit-two" />
 
             <div className="rescue-core">
 
-              <div className="rescue-core-ring">
+              <div className="rescue-core-icon">
                 <HeartHandshake
-                  size={39}
+                  size={38}
                 />
               </div>
 
-              <span>
-                RESCUE
-              </span>
-
               <strong>
-                {remainingMeals}
+                RESCUE
               </strong>
 
-              <small>
-                MEALS
-              </small>
+              <span>
+                SMART DISPATCH
+              </span>
 
             </div>
 
-            <div className="floating-rescue-card card-food">
 
-              <Leaf size={14} />
+            <div className="floating-card floating-food">
+
+              <PackageCheck
+                size={18}
+              />
 
               <div>
                 <span>
-                  FOOD SAVED
+                  SURPLUS
                 </span>
 
                 <strong>
-                  {estimatedWeight} kg
+                  {formatNumber(
+                    remainingMeals
+                  )} meals
                 </strong>
               </div>
 
             </div>
 
-            <div className="floating-rescue-card card-ngo">
 
-              <Users size={14} />
+            <div className="floating-card floating-ngo">
+
+              <Users
+                size={18}
+              />
 
               <div>
                 <span>
@@ -751,33 +1099,19 @@ export default function FoodRescue() {
                 </span>
 
                 <strong>
-                  {DEMO_NGOS.length} nearby
-                </strong>
-              </div>
-
-            </div>
-
-            <div className="floating-rescue-card card-impact">
-
-              <Zap size={14} />
-
-              <div>
-                <span>
-                  CO₂ AVOIDED
-                </span>
-
-                <strong>
-                  {estimatedCo2} kg
+                  {DEMO_NGOS.length} partners
                 </strong>
               </div>
 
             </div>
 
           </div>
+
         </section>
 
+
         {/* =================================================
-            WORKFLOW
+            FLOW
             ================================================= */}
 
         <section className="rescue-flow">
@@ -789,7 +1123,13 @@ export default function FoodRescue() {
             done
           />
 
-          <FlowLine active />
+          <FlowLine
+            active={
+              Boolean(
+                surplusEvent
+              )
+            }
+          />
 
           <FlowStep
             number="02"
@@ -809,7 +1149,7 @@ export default function FoodRescue() {
           <FlowLine
             active={
               Boolean(
-                surplusEvent
+                selectedNgo
               )
             }
           />
@@ -832,14 +1172,14 @@ export default function FoodRescue() {
           <FlowLine
             active={
               Boolean(
-                selectedNgo
+                donation
               )
             }
           />
 
           <FlowStep
             number="04"
-            title="Pickup"
+            title="Notify"
             active={
               Boolean(
                 donation
@@ -862,7 +1202,7 @@ export default function FoodRescue() {
 
           <FlowStep
             number="05"
-            title="Impact"
+            title="Track"
             active={
               Boolean(
                 donation
@@ -872,33 +1212,35 @@ export default function FoodRescue() {
 
         </section>
 
+
         {/* =================================================
             SURPLUS STATUS
             ================================================= */}
 
         <section
-          className={`surplus-status ${
+          className={
             surplusDetected
-              ? "active"
-              : "inactive"
-          }`}
+              ? "surplus-banner active"
+              : "surplus-banner"
+          }
         >
 
-          <div className="surplus-status-main">
+          <div className="surplus-main">
 
-            <div className="surplus-status-icon">
+            <div className="surplus-icon">
 
               {surplusDetected ? (
                 <HeartHandshake
-                  size={25}
+                  size={27}
                 />
               ) : (
                 <ShieldCheck
-                  size={25}
+                  size={27}
                 />
               )}
 
             </div>
+
 
             <div>
 
@@ -906,15 +1248,17 @@ export default function FoodRescue() {
                 SURPLUS DETECTION
               </span>
 
-              <h3>
+              <h2>
                 {surplusDetected
-                  ? `${remainingMeals} meals are ready for rescue`
-                  : "No qualifying surplus detected"}
-              </h3>
+                  ? `${formatNumber(
+                    remainingMeals
+                  )} meals are ready for rescue`
+                  : "No qualifying surplus yet"}
+              </h2>
 
               <p>
                 {surplusDetected
-                  ? `Remaining meals are above the ${SURPLUS_THRESHOLD}-meal rescue threshold.`
+                  ? `The available surplus is above the ${SURPLUS_THRESHOLD}-meal rescue threshold.`
                   : `Rescue activates when more than ${SURPLUS_THRESHOLD} meals remain.`}
               </p>
 
@@ -922,417 +1266,476 @@ export default function FoodRescue() {
 
           </div>
 
-          <div className="surplus-status-number">
+
+          <div className="surplus-number">
+
             <strong>
-              {remainingMeals}
+              {formatNumber(
+                remainingMeals
+              )}
             </strong>
 
             <span>
               meals
             </span>
+
           </div>
 
         </section>
+
 
         {/* =================================================
             MAIN GRID
             ================================================= */}
 
-        <section className="food-rescue-grid">
+        <section className="rescue-main-grid">
 
-          {/* =================================================
-              LEFT
-              ================================================= */}
 
-          <div className="food-rescue-main">
+          {/* ===============================================
+              LEFT COLUMN
+              =============================================== */}
 
-            {/* ---------------------------------------------
-                STEP 01
-                --------------------------------------------- */}
+          <div className="rescue-left">
 
-            <div className="rescue-card">
+
+            {/* MEAL SUMMARY */}
+
+            <section className="rescue-card">
 
               <CardHeader
                 step="01"
-                title="Verify surplus"
-                description="Confirm the operational numbers before creating the rescue event."
+                title="Meal rescue summary"
+                description="The current canteen operation that produced the surplus."
                 icon={
                   <PackageCheck
-                    size={18}
+                    size={20}
                   />
                 }
               />
 
-              <div className="operation-metrics">
 
-                <OperationMetric
-                  label="Meal date"
-                  value={date}
+              <div className="summary-grid">
+
+                <SummaryItem
+                  icon={
+                    <Users size={18} />
+                  }
+                  label="Expected demand"
+                  value={`${formatNumber(
+                    predictedMeals
+                  )} meals`}
                 />
 
-                <OperationMetric
-                  label="Meal type"
-                  value={mealType}
-                />
-
-                <OperationMetric
-                  label="Predicted"
-                  value={`${predictedMeals} meals`}
-                />
-
-                <OperationMetric
+                <SummaryItem
+                  icon={
+                    <Truck size={18} />
+                  }
                   label="Prepared"
-                  value={`${preparedMeals} meals`}
+                  value={`${formatNumber(
+                    preparedMeals
+                  )} meals`}
                 />
 
-                <OperationMetric
+                <SummaryItem
+                  icon={
+                    <HeartHandshake
+                      size={18}
+                    />
+                  }
                   label="Served"
-                  value={`${servedMeals} meals`}
+                  value={`${formatNumber(
+                    servedMeals
+                  )} meals`}
                 />
 
-                <OperationMetric
-                  label="Remaining"
-                  value={`${remainingMeals} meals`}
+                <SummaryItem
+                  icon={
+                    <Leaf size={18} />
+                  }
+                  label="Available surplus"
+                  value={`${formatNumber(
+                    remainingMeals
+                  )} meals`}
                   highlight
                 />
 
               </div>
 
-              <div
-                className={`detection-panel ${
-                  surplusDetected
-                    ? "detected"
-                    : "not-detected"
-                }`}
-              >
 
-                <div className="detection-icon">
+              <div className="operation-details">
 
-                  {surplusDetected ? (
-                    <CheckCircle2
-                      size={21}
-                    />
-                  ) : (
-                    <AlertCircle
-                      size={21}
-                    />
-                  )}
+                <div>
 
-                </div>
-
-                <div className="detection-copy">
+                  <span>
+                    DATE
+                  </span>
 
                   <strong>
-                    {surplusDetected
-                      ? "Surplus detected"
-                      : "No qualifying surplus"}
+                    {formatDate(
+                      date
+                    )}
                   </strong>
-
-                  <p>
-                    {surplusDetected
-                      ? `${remainingMeals} meals remain and can be redirected to a nearby community partner.`
-                      : `At least ${SURPLUS_THRESHOLD + 1} meals must remain before a rescue event can be created.`}
-                  </p>
 
                 </div>
 
-                <div className="detection-badge">
 
-                  {surplusDetected
-                    ? "RESCUE READY"
-                    : "MONITORING"}
+                <div>
+
+                  <span>
+                    MEAL
+                  </span>
+
+                  <strong>
+                    {mealType}
+                  </strong>
+
+                </div>
+
+
+                <div>
+
+                  <span>
+                    PICKUP LOCATION
+                  </span>
+
+                  <strong>
+                    {pickupLocation}
+                  </strong>
 
                 </div>
 
               </div>
 
-              {!surplusEvent && (
-                <button
-                  className="primary-rescue-button"
-                  onClick={
-                    handleCreateSurplus
-                  }
-                  disabled={
-                    creatingSurplus ||
-                    !surplusDetected
-                  }
-                >
+            </section>
 
-                  {creatingSurplus ? (
-                    <>
-                      <RefreshCw
-                        size={16}
-                        className="spin"
-                      />
 
-                      Creating rescue event...
-                    </>
-                  ) : (
-                    <>
-                      <PackageCheck
-                        size={16}
-                      />
+            {/* RECORD SURPLUS */}
 
-                      Create Surplus Event
+            <section className="rescue-card">
 
-                      <ArrowRight
-                        size={15}
-                      />
-                    </>
-                  )}
+              <CardHeader
+                step="02"
+                title="Record surplus"
+                description="Save the detected surplus to Firebase before contacting an NGO."
+                icon={
+                  <Database size={20} />
+                }
+              />
 
-                </button>
-              )}
 
-              {surplusEvent && (
-                <div className="event-created">
+              {!surplusEvent ? (
 
-                  <div className="event-created-icon">
-                    <CheckCircle2
-                      size={17}
+                <div className="record-box">
+
+                  <div className="record-box-icon">
+                    <Database
+                      size={24}
                     />
                   </div>
 
                   <div>
+
+                    <h3>
+                      Save this surplus event
+                    </h3>
+
+                    <p>
+                      This creates a permanent
+                      record in Firebase so the
+                      rescue can be tracked later.
+                    </p>
+
+                  </div>
+
+
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={
+                      handleCreateSurplus
+                    }
+                    disabled={
+                      creatingSurplus ||
+                      !surplusDetected
+                    }
+                  >
+
+                    {creatingSurplus ? (
+
+                      <>
+                        <Loader2
+                          size={18}
+                          className="spin"
+                        />
+
+                        Saving...
+
+                      </>
+
+                    ) : (
+
+                      <>
+                        <Database
+                          size={18}
+                        />
+
+                        Save surplus event
+
+                      </>
+
+                    )}
+
+                  </button>
+
+                </div>
+
+              ) : (
+
+                <div className="saved-event">
+
+                  <div className="saved-event-icon">
+                    <CheckCircle2
+                      size={25}
+                    />
+                  </div>
+
+                  <div>
+
                     <strong>
-                      Surplus event created
+                      Surplus event saved
                     </strong>
 
                     <span>
-                      Event ID:{" "}
-                      {surplusEvent.id}
+                      Firebase record created successfully.
                     </span>
+
                   </div>
 
-                  <Check
-                    size={17}
-                  />
+                  <div className="saved-event-id">
+
+                    ID:
+                    <strong>
+                      {surplusEvent.id}
+                    </strong>
+
+                  </div>
 
                 </div>
+
               )}
 
-            </div>
+            </section>
 
-            {/* ---------------------------------------------
-                STEP 02
-                --------------------------------------------- */}
 
-            <div className="rescue-card">
+            {/* NGO SELECTION */}
+
+            <section className="rescue-card">
 
               <CardHeader
-                step="02"
-                title="Find the right NGO"
-                description="Choose a nearby community partner. NGOs can receive part or all of the surplus based on their available capacity."
+                step="03"
+                title="Choose pickup partner"
+                description="Select an NGO that can receive the available meals."
                 icon={
-                  <Users
-                    size={18}
+                  <HeartHandshake
+                    size={20}
                   />
                 }
               />
 
+
               {!surplusEvent ? (
+
                 <LockedState
-                  icon={
-                    <ShieldCheck
-                      size={23}
-                    />
-                  }
-                  title="NGO selection locked"
-                  text="Create the surplus event first to activate the rescue network."
+                  title="Record the surplus first"
+                  text="Save the surplus event before selecting an NGO."
                 />
+
               ) : (
-                <div className="ngo-grid">
+
+                <div className="ngo-list">
 
                   {DEMO_NGOS.map(
                     (ngo) => {
 
-                      /*
-                       * Partial pickup is supported.
-                       * An NGO can be selected even when
-                       * its capacity is smaller than the
-                       * total surplus.
-                       */
+                      const selected =
+                        selectedNgo?.id ===
+                        ngo.id;
 
-                      const canHandle =
+                      const canReceive =
                         Number(
-                          ngo.capacity || 0
+                          ngo.capacity
                         ) > 0;
 
                       const pickupForNgo =
                         Math.min(
                           remainingMeals,
                           Number(
-                            ngo.capacity || 0
+                            ngo.capacity
                           )
                         );
 
-                      const selected =
-                        selectedNgo?.id ===
-                        ngo.id;
 
                       return (
+
                         <button
-                          key={ngo.id}
                           type="button"
-                          className={`ngo-option ${
+                          key={ngo.id}
+                          className={
                             selected
-                              ? "selected"
-                              : ""
-                          } ${
-                            !canHandle
-                              ? "disabled"
-                              : ""
-                          }`}
+                              ? "ngo-card selected"
+                              : "ngo-card"
+                          }
                           onClick={() =>
-                            canHandle &&
                             handleSelectNgo(
                               ngo
                             )
                           }
                           disabled={
-                            !canHandle
+                            !canReceive
                           }
                         >
 
-                          <div className="ngo-option-top">
+                          <div className="ngo-icon">
 
-                            <div className="ngo-avatar">
-                              <HeartHandshake
-                                size={18}
-                              />
-                            </div>
+                            <HeartHandshake
+                              size={21}
+                            />
 
-                            <div className="ngo-name">
+                          </div>
 
-                              <strong>
-                                {ngo.name}
-                              </strong>
 
-                              <span>
-                                Community partner
-                              </span>
+                          <div className="ngo-content">
 
-                            </div>
+                            <div className="ngo-top">
 
-                            <div
-                              className={`ngo-radio ${
-                                selected
-                                  ? "checked"
-                                  : ""
-                              }`}
-                            >
+                              <div>
+
+                                <strong>
+                                  {ngo.name}
+                                </strong>
+
+                                <span>
+                                  <MapPin
+                                    size={13}
+                                  />
+
+                                  {ngo.distance}
+                                </span>
+
+                              </div>
+
+
                               {selected && (
-                                <Check
-                                  size={12}
+
+                                <CheckCircle2
+                                  size={24}
+                                  className="selected-check"
                                 />
+
                               )}
+
                             </div>
 
-                          </div>
 
-                          <div className="ngo-meta">
-
-                            <span>
-                              <MapPin
-                                size={12}
-                              />
-
-                              {ngo.distance}
-                            </span>
-
-                            <span>
-                              <PackageCheck
-                                size={12}
-                              />
-
-                              {ngo.capacity} meals
-                            </span>
-
-                            <span>
-                              <Clock3
-                                size={12}
-                              />
-
-                              {ngo.responseTime}
-                            </span>
-
-                          </div>
-
-                          <div className="ngo-capacity">
-
-                            <div>
+                            <div className="ngo-meta">
 
                               <span>
-                                CAPACITY
+                                <PackageCheck
+                                  size={14}
+                                />
+
+                                Capacity{" "}
+                                {formatNumber(
+                                  ngo.capacity
+                                )}
                               </span>
 
-                              <strong>
-                                {ngo.capacity} meals
-                              </strong>
+                              <span>
+                                <Clock3
+                                  size={14}
+                                />
+
+                                {ngo.responseTime}
+                              </span>
 
                             </div>
 
-                            <span
-                              className={
-                                canHandle
-                                  ? "capacity-ok"
-                                  : "capacity-bad"
-                              }
-                            >
-                              {canHandle
-                                ? `Can receive ${pickupForNgo}`
-                                : "Unavailable"}
-                            </span>
+
+                            <div className="ngo-capacity">
+
+                              <div>
+
+                                <span>
+                                  CAN RECEIVE
+                                </span>
+
+                                <strong>
+                                  {formatNumber(
+                                    pickupForNgo
+                                  )} meals
+                                </strong>
+
+                              </div>
+
+                              <span className="capacity-ready">
+                                Available
+                              </span>
+
+                            </div>
+
+
+                            {selected && (
+
+                              <div className="ngo-selected">
+
+                                <CheckCircle2
+                                  size={15}
+                                />
+
+                                NGO selected ·{" "}
+                                {formatNumber(
+                                  pickupForNgo
+                                )} meals
+
+                              </div>
+
+                            )}
 
                           </div>
-
-                          {selected && (
-                            <div className="ngo-selected-banner">
-
-                              <CheckCircle2
-                                size={13}
-                              />
-
-                              NGO selected · pickup{" "}
-                              {pickupForNgo} meals
-
-                            </div>
-                          )}
 
                         </button>
+
                       );
+
                     }
                   )}
 
                 </div>
+
               )}
 
-            </div>
+            </section>
 
-            {/* ---------------------------------------------
-                STEP 03
-                --------------------------------------------- */}
 
-            <div className="rescue-card">
+            {/* PICKUP INFORMATION */}
+
+            <section className="rescue-card">
 
               <CardHeader
-                step="03"
-                title="Pickup intelligence"
-                description="Everything the pickup partner needs before arriving at the canteen."
+                step="04"
+                title="Pickup information"
+                description="Everything the NGO needs before arriving."
                 icon={
-                  <Truck
-                    size={18}
-                  />
+                  <Truck size={20} />
                 }
               />
+
 
               <div className="pickup-grid">
 
                 <PickupItem
                   icon={
-                    <MapPin
-                      size={15}
-                    />
+                    <MapPin size={18} />
                   }
                   label="Pickup location"
                   value={
@@ -1342,9 +1745,7 @@ export default function FoodRescue() {
 
                 <PickupItem
                   icon={
-                    <Clock3
-                      size={15}
-                    />
+                    <Clock3 size={18} />
                   }
                   label="Shelf life"
                   value={
@@ -1355,34 +1756,24 @@ export default function FoodRescue() {
                 <PickupItem
                   icon={
                     <PackageCheck
-                      size={15}
+                      size={18}
                     />
                   }
-                  label="Available surplus"
-                  value={`${remainingMeals} meals`}
-                />
-
-                <PickupItem
-                  icon={
-                    <Truck
-                      size={15}
-                    />
-                  }
-                  label="NGO pickup"
+                  label="Meals for NGO"
                   value={
                     selectedNgo
-                      ? `${pickupMeals} meals`
+                      ? `${formatNumber(
+                        pickupMeals
+                      )} meals`
                       : "Select NGO"
                   }
                 />
 
                 <PickupItem
                   icon={
-                    <Users
-                      size={15}
-                    />
+                    <Users size={18} />
                   }
-                  label="Selected NGO"
+                  label="Pickup partner"
                   value={
                     selectedNgo?.name ||
                     "Not selected"
@@ -1391,269 +1782,208 @@ export default function FoodRescue() {
 
               </div>
 
-              <div className="pickup-alert">
+
+              <div className="time-warning">
+
+                <Clock3
+                  size={19}
+                />
 
                 <div>
-                  <Clock3
-                    size={15}
-                  />
-                </div>
 
-                <p>
-                  Food rescue is time-sensitive.
-                  The selected NGO should collect
-                  the meals within the displayed
-                  shelf-life window.
-                </p>
+                  <strong>
+                    Food rescue is time-sensitive
+                  </strong>
+
+                  <span>
+                    The NGO should collect the meals
+                    within the displayed shelf-life window.
+                  </span>
+
+                </div>
 
               </div>
 
-            </div>
+            </section>
 
-            {/* ---------------------------------------------
-                STEP 04
-                --------------------------------------------- */}
 
-            <div className="rescue-card">
+            {/* SEND REQUEST */}
 
-              <CardHeader
-                step="04"
-                title="Send pickup notification"
-                description="Create the donation request and move the rescue into tracking."
-                icon={
-                  <Send
-                    size={18}
-                  />
-                }
-              />
+            <section className="send-card">
 
-              {!selectedNgo ? (
-                <LockedState
-                  icon={
-                    <Send
-                      size={22}
-                    />
-                  }
-                  title="Waiting for NGO selection"
-                  text="Select an NGO above to prepare the pickup notification."
-                />
-              ) : (
-                <div className="notification-preview">
+              <div className="send-card-header">
 
-                  <div className="notification-preview-icon">
-                    <Send
-                      size={19}
-                    />
-                  </div>
+                <div className="send-icon">
+                  <Send size={24} />
+                </div>
 
-                  <div className="notification-preview-content">
+                <div>
 
-                    <span>
-                      PICKUP REQUEST READY
-                    </span>
+                  <span>
+                    FINAL STEP
+                  </span>
 
-                    <strong>
-                      Notify{" "}
-                      {selectedNgo.name}
-                    </strong>
+                  <h2>
+                    Send pickup request
+                  </h2>
 
-                    <p>
-                      {pickupMeals} meals
-                      will be picked up from{" "}
-                      {pickupLocation}.
-                      Estimated NGO response:{" "}
-                      {
-                        selectedNgo.responseTime
-                      }.
-                      {remainingAfterPickup > 0 && (
-                        <>
-                          {" "}
-                          {remainingAfterPickup} meals will remain
-                          available for another rescue partner.
-                        </>
-                      )}
-                    </p>
+                  <p>
+                    The request will be saved to Firebase
+                    before the NGO page opens.
+                  </p>
 
-                    <div className="notification-phone">
+                </div>
 
-                      <Phone
-                        size={13}
+              </div>
+
+
+              {selectedNgo ? (
+
+                <div className="request-preview">
+
+                  <div className="request-preview-main">
+
+                    <div className="request-preview-icon">
+                      <HeartHandshake
+                        size={23}
                       />
+                    </div>
 
-                      {selectedNgo.phone}
+                    <div>
+
+                      <span>
+                        PICKUP REQUEST READY
+                      </span>
+
+                      <strong>
+                        {selectedNgo.name}
+                      </strong>
+
+                      <p>
+                        {formatNumber(
+                          pickupMeals
+                        )} meals ·{" "}
+                        {pickupLocation}
+                      </p>
 
                     </div>
 
                   </div>
 
-                  <div className="notification-ready">
 
+                  <div className="request-status">
                     <span />
-
-                    READY
-
+                    Ready
                   </div>
 
                 </div>
+
+              ) : (
+
+                <LockedState
+                  title="Select an NGO first"
+                  text="Choose a pickup partner above to create the request."
+                />
+
               )}
 
+
               <button
-                className="primary-rescue-button notification-button"
-                onClick={
-                  handleSendNotification
-                }
+                type="button"
+                className="send-button"
                 disabled={
                   sendingDonation ||
-                  !surplusEvent ||
                   !selectedNgo ||
-                  Boolean(donation) ||
-                  !selectedNgoCanHandle
+                  !surplusEvent ||
+                  Boolean(donation)
+                }
+                onClick={
+                  handleSendPickupRequest
                 }
               >
 
                 {sendingDonation ? (
+
                   <>
-                    <RefreshCw
-                      size={16}
+                    <Loader2
+                      size={20}
                       className="spin"
                     />
 
-                    Creating donation request...
+                    Saving pickup request...
+
                   </>
+
                 ) : donation ? (
+
                   <>
                     <CheckCircle2
-                      size={16}
+                      size={20}
                     />
 
-                    Pickup Request Created
+                    Pickup request saved
 
-                    <ArrowRight
-                      size={15}
-                    />
                   </>
+
                 ) : (
-                  <>
-                    <Send
-                      size={16}
-                    />
 
-                    Send Pickup Notification
-                    {selectedNgo &&
-                      ` · ${pickupMeals} meals`}
+                  <>
+                    <Send size={20} />
+
+                    Send pickup request
 
                     <ArrowRight
-                      size={15}
+                      size={18}
                     />
+
                   </>
+
                 )}
 
               </button>
 
-            </div>
+
+              {donation && (
+
+                <div className="firebase-confirmation">
+
+                  <CheckCircle2
+                    size={18}
+                  />
+
+                  <div>
+
+                    <strong>
+                      Notification stored in Firebase
+                    </strong>
+
+                    <span>
+                      Donation ID: {donation.id}
+                    </span>
+
+                  </div>
+
+                </div>
+
+              )}
+
+            </section>
 
           </div>
 
-          {/* =================================================
-              RIGHT SIDEBAR
-              ================================================= */}
 
-          <aside className="food-rescue-sidebar">
+          {/* ===============================================
+              RIGHT COLUMN
+              =============================================== */}
 
-            {/* ---------------------------------------------
-                RESCUE SUMMARY
-                --------------------------------------------- */}
+          <aside className="rescue-sidebar">
 
-            <div className="rescue-summary-card">
 
-              <div className="summary-card-top">
+            {/* PROGRESS */}
 
-                <div>
+            <section className="progress-card">
 
-                  <span>
-                    LIVE RESCUE
-                  </span>
-
-                  <h3>
-                    Rescue summary
-                  </h3>
-
-                </div>
-
-                <div className="summary-live-dot">
-                  <span />
-                </div>
-
-              </div>
-
-              <div className="summary-big-number">
-
-                {remainingMeals}
-
-                <small>
-                  meals
-                </small>
-
-              </div>
-
-              <p>
-                potential food diverted
-                from waste
-              </p>
-
-              <div className="summary-divider" />
-
-              <SummaryRow
-                label="Threshold"
-                value={`>${SURPLUS_THRESHOLD}`}
-              />
-
-              <SummaryRow
-                label="Prepared"
-                value={
-                  preparedMeals
-                }
-              />
-
-              <SummaryRow
-                label="Served"
-                value={
-                  servedMeals
-                }
-              />
-
-              <SummaryRow
-                label="Remaining"
-                value={
-                  remainingMeals
-                }
-              />
-
-              <SummaryRow
-                label="Status"
-                value={
-                  donation
-                    ? "Pickup Requested"
-                    : surplusEvent
-                    ? "Event Created"
-                    : surplusDetected
-                    ? "Ready"
-                    : "No Surplus"
-                }
-                highlight={
-                  surplusDetected
-                }
-              />
-
-            </div>
-
-            {/* ---------------------------------------------
-                PROGRESS
-                --------------------------------------------- */}
-
-            <div className="rescue-progress-card">
-
-              <div className="sidebar-card-heading">
+              <div className="progress-header">
 
                 <div>
 
@@ -1661,78 +1991,184 @@ export default function FoodRescue() {
                     RESCUE PROGRESS
                   </span>
 
-                  <strong>
-                    Workflow completion
-                  </strong>
+                  <h3>
+                    {progress}% complete
+                  </h3>
 
                 </div>
 
-                <b>
-                  {rescueProgress}%
-                </b>
+                <HeartHandshake
+                  size={22}
+                />
 
               </div>
 
-              <div className="rescue-progress-track">
+
+              <div className="progress-track">
 
                 <div
-                  className="rescue-progress-fill"
+                  className="progress-fill"
                   style={{
-                    width: `${rescueProgress}%`,
+                    width: `${progress}%`,
                   }}
                 />
 
               </div>
 
-              <div className="sidebar-workflow">
 
-                <SidebarWorkflowStep
-                  number="01"
+              <div className="checklist">
+
+                <ChecklistItem
+                  checked
                   title="Surplus detected"
-                  done={
-                    surplusDetected
-                  }
+                  text={`${formatNumber(
+                    remainingMeals
+                  )} meals available`}
                 />
 
-                <SidebarWorkflowStep
-                  number="02"
-                  title="Event recorded"
-                  done={
+                <ChecklistItem
+                  checked={
                     Boolean(
                       surplusEvent
                     )
                   }
+                  title="Surplus saved"
+                  text={
+                    surplusEvent
+                      ? "Firebase record created"
+                      : "Waiting for record"
+                  }
                 />
 
-                <SidebarWorkflowStep
-                  number="03"
-                  title="NGO selected"
-                  done={
+                <ChecklistItem
+                  checked={
                     Boolean(
                       selectedNgo
                     )
                   }
+                  title="NGO selected"
+                  text={
+                    selectedNgo?.name ||
+                    "Waiting for selection"
+                  }
                 />
 
-                <SidebarWorkflowStep
-                  number="04"
-                  title="Pickup requested"
-                  done={
+                <ChecklistItem
+                  checked={
                     Boolean(
                       donation
                     )
                   }
+                  title="Pickup request sent"
+                  text={
+                    donation
+                      ? "Notification stored"
+                      : "Waiting for notification"
+                  }
+
+                />
+
+                <ChecklistItem
+                  checked={false}
+                  title="NGO accepted"
+                  text="Waiting for NGO response"
+                />
+
+                <ChecklistItem
+                  checked={false}
+                  title="Food collected"
+                  text="Waiting for pickup"
                 />
 
               </div>
 
-            </div>
+            </section>
 
-            {/* ---------------------------------------------
-                SELECTED NGO
-                --------------------------------------------- */}
 
-            <div className="selected-ngo-card">
+            {/* PICKUP CARD */}
+
+            <section className="sidebar-card">
+
+              <div className="sidebar-card-heading">
+
+                <div>
+
+                  <span>
+                    PICKUP DETAILS
+                  </span>
+
+                  <h3>
+                    Rescue handoff
+                  </h3>
+
+                </div>
+
+                <MapPin
+                  size={20}
+                />
+
+              </div>
+
+
+              <div className="sidebar-location">
+
+                <div className="location-icon">
+                  <MapPin size={21} />
+                </div>
+
+                <div>
+
+                  <span>
+                    PICKUP LOCATION
+                  </span>
+
+                  <strong>
+                    {pickupLocation}
+                  </strong>
+
+                </div>
+
+              </div>
+
+
+              <div className="sidebar-details">
+
+                <div>
+
+                  <span>
+                    MEALS
+                  </span>
+
+                  <strong>
+                    {formatNumber(
+                      pickupMeals ||
+                      remainingMeals
+                    )}
+                  </strong>
+
+                </div>
+
+
+                <div>
+
+                  <span>
+                    SHELF LIFE
+                  </span>
+
+                  <strong>
+                    {formattedShelfLife}
+                  </strong>
+
+                </div>
+
+              </div>
+
+            </section>
+
+
+            {/* NGO CARD */}
+
+            <section className="sidebar-card">
 
               <div className="sidebar-card-heading">
 
@@ -1742,299 +2178,225 @@ export default function FoodRescue() {
                     PICKUP PARTNER
                   </span>
 
-                  <strong>
-                    Selected NGO
-                  </strong>
+                  <h3>
+                    {selectedNgo
+                      ? selectedNgo.name
+                      : "Not selected"}
+                  </h3>
 
                 </div>
 
-                <Users
-                  size={16}
+                <HeartHandshake
+                  size={20}
                 />
 
               </div>
 
+
               {selectedNgo ? (
+
                 <>
 
-                  <div className="selected-ngo-main">
+                  <div className="selected-ngo-details">
 
-                    <div className="selected-ngo-avatar">
-                      <HeartHandshake
-                        size={18}
+                    <div>
+
+                      <MapPin
+                        size={17}
                       />
+
+                      <span>
+                        {selectedNgo.distance}
+                      </span>
+
                     </div>
 
                     <div>
 
-                      <strong>
-                        {selectedNgo.name}
-                      </strong>
-
-                      <span>
-                        {selectedNgo.distance}
-                        {" · "}
-                        {
-                          selectedNgo.responseTime
-                        }
-                      </span>
-
-                    </div>
-
-                  </div>
-
-                  <div className="selected-ngo-detail">
-
-                    <MapPin
-                      size={13}
-                    />
-
-                    <span>
-                      {pickupLocation}
-                    </span>
-
-                  </div>
-
-                  <div className="selected-ngo-detail">
-
-                    <Phone
-                      size={13}
-                    />
-
-                    <span>
-                      {selectedNgo.phone}
-                    </span>
-
-                  </div>
-
-                  <div className="selected-ngo-detail">
-
-                    <PackageCheck
-                      size={13}
-                    />
-
-                    <span>
-                      Pickup quantity:{" "}
-                      {pickupMeals} meals
-                    </span>
-
-                  </div>
-
-                  {remainingAfterPickup > 0 && (
-                    <div className="selected-ngo-detail">
-
-                      <PackageCheck
-                        size={13}
+                      <Phone
+                        size={17}
                       />
 
                       <span>
-                        Remaining after pickup:{" "}
-                        {remainingAfterPickup} meals
+                        {selectedNgo.phone}
                       </span>
 
                     </div>
-                  )}
+
+                    <div>
+
+                      <PackageCheck
+                        size={17}
+                      />
+
+                      <span>
+                        Capacity{" "}
+                        {formatNumber(
+                          selectedNgo.capacity
+                        )}
+                      </span>
+
+                    </div>
+
+                  </div>
+
+                  <div className="ngo-response">
+
+                    <span />
+
+                    Expected response{" "}
+                    {selectedNgo.responseTime}
+
+                  </div>
 
                 </>
-              ) : (
-                <div className="empty-ngo">
 
-                  <div>
-                    <Users
-                      size={19}
-                    />
-                  </div>
+              ) : (
+
+                <div className="sidebar-empty">
+
+                  <Users size={26} />
 
                   <strong>
                     No NGO selected
                   </strong>
 
                   <span>
-                    Select a partner from the
-                    rescue network.
+                    Select a pickup partner
+                    from the list.
                   </span>
 
                 </div>
+
               )}
 
-            </div>
+            </section>
 
-            {/* ---------------------------------------------
-                IMPACT PREVIEW
-                --------------------------------------------- */}
 
-            <div className="impact-preview-card">
+            {/* FIREBASE WORKFLOW */}
 
-              <div className="impact-preview-icon">
+            <section className="firebase-card">
 
-                <Sparkles
-                  size={17}
-                />
-
+              <div className="firebase-card-icon">
+                <Database size={21} />
               </div>
 
               <div>
 
                 <span>
-                  POTENTIAL IMPACT
+                  FIREBASE WORKFLOW
                 </span>
 
-                <strong>
-                  {estimatedWeight} kg food available for rescue
-                </strong>
+                <h3>
+                  Persistent rescue tracking
+                </h3>
 
                 <p>
-                  ≈ {estimatedPeopleHelped} meals
-                  can reach the community
+                  Pickup requests remain available
+                  even after you leave this page.
+                  The NGO and Dashboard can read
+                  the same donation record.
                 </p>
 
               </div>
 
-            </div>
+            </section>
 
           </aside>
 
         </section>
 
-        {/* =================================================
-            FINAL IMPACT BANNER
-            ================================================= */}
-
-        <section className="rescue-impact-banner">
-
-          <div className="impact-banner-content">
-
-            <div className="impact-banner-icon">
-
-              <Leaf
-                size={24}
-              />
-
-            </div>
-
-            <div>
-
-              <span>
-                REFEED IMPACT LOOP
-              </span>
-
-              <h2>
-                One surplus meal can become
-                one rescued meal.
-              </h2>
-
-              <p>
-                Predict demand → prepare accurately
-                → serve → rescue surplus → measure
-                the impact.
-              </p>
-
-            </div>
-
-          </div>
-
-          <div className="impact-banner-metrics">
-
-            <ImpactMetric
-              value={
-                remainingMeals
-              }
-              label="Meals available"
-            />
-
-            <ImpactMetric
-              value={
-                selectedNgo
-                  ? `${pickupMeals}`
-                  : "—"
-              }
-              label="NGO pickup meals"
-            />
-
-            <ImpactMetric
-              value={`${estimatedWeight} kg`}
-              label="Food saved"
-            />
-
-            <ImpactMetric
-              value={`${estimatedCo2} kg`}
-              label="CO₂ avoided*"
-            />
-
-          </div>
-
-        </section>
 
         {/* =================================================
             BOTTOM ACTIONS
             ================================================= */}
 
-        <section className="rescue-bottom-actions">
+        <section className="bottom-actions">
 
           <button
-            className="secondary-rescue-button"
+            type="button"
+            className="secondary-action"
             onClick={handleBack}
           >
+            <ArrowLeft size={17} />
 
-            <ArrowLeft
-              size={15}
-            />
-
-            Meal Operations
+            Back to meal operations
 
           </button>
 
+
+          <button
+            type="button"
+            className="secondary-action"
+            onClick={handleReset}
+          >
+            <RefreshCw size={17} />
+
+            Reset rescue flow
+
+          </button>
+
+
+          <button
+            type="button"
+            className="primary-action"
+            disabled={!donation}
+            onClick={() =>
+              navigate(
+                "/dashboard"
+              )
+            }
+          >
+
+            Open Dashboard
+
+            <ArrowRight size={17} />
+
+          </button>
+
+        </section>
+
+
+        {/* =================================================
+            FOOTER
+            ================================================= */}
+
+        <footer className="rescue-footer">
+
           <div>
 
-            <button
-              className="secondary-rescue-button"
-              onClick={() =>
-                navigate("/impact")
-              }
-            >
+            <div className="footer-logo">
+              <Leaf size={16} />
+            </div>
 
-              View Impact Dashboard
+            <div>
 
-              <ArrowRight
-                size={15}
-              />
+              <strong>
+                ReFeed
+              </strong>
 
-            </button>
+              <span>
+                Predict · Prepare · Serve · Rescue · Measure
+              </span>
 
-            {donation && (
-              <button
-                className="primary-rescue-button bottom-primary"
-                onClick={() =>
-                  navigate(
-                    "/donations",
-                    {
-                      state: {
-                        donationId:
-                          donation.id,
-                      },
-                    }
-                  )
-                }
-              >
-
-                Track Donation
-
-                <ArrowRight
-                  size={15}
-                />
-
-              </button>
-            )}
+            </div>
 
           </div>
 
-        </section>
+
+          <p>
+            Every saved pickup request creates a traceable
+            rescue record.
+          </p>
+
+        </footer>
 
       </main>
 
     </div>
   );
 }
+
 
 /* =========================================================
    COMPONENTS
@@ -2049,15 +2411,19 @@ function CardHeader({
   return (
     <div className="rescue-card-header">
 
-      <div className="card-header-left">
+      <div className="card-step">
+        {step}
+      </div>
 
-        <div className="card-step">
-          STEP {step}
-        </div>
+      <div className="card-header-icon">
+        {icon}
+      </div>
 
-        <h3>
+      <div>
+
+        <h2>
           {title}
-        </h3>
+        </h2>
 
         <p>
           {description}
@@ -2065,73 +2431,27 @@ function CardHeader({
 
       </div>
 
-      <div className="card-header-icon">
-        {icon}
-      </div>
-
     </div>
   );
 }
 
-function OperationMetric({
+
+function SummaryItem({
+  icon,
   label,
   value,
   highlight = false,
 }) {
   return (
     <div
-      className={`operation-metric ${
+      className={
         highlight
-          ? "highlight"
-          : ""
-      }`}
+          ? "summary-item highlight"
+          : "summary-item"
+      }
     >
 
-      <span>
-        {label}
-      </span>
-
-      <strong>
-        {value}
-      </strong>
-
-    </div>
-  );
-}
-
-function LockedState({
-  icon,
-  title,
-  text,
-}) {
-  return (
-    <div className="locked-state">
-
-      <div className="locked-state-icon">
-        {icon}
-      </div>
-
-      <strong>
-        {title}
-      </strong>
-
-      <p>
-        {text}
-      </p>
-
-    </div>
-  );
-}
-
-function PickupItem({
-  icon,
-  label,
-  value,
-}) {
-  return (
-    <div className="pickup-item">
-
-      <div className="pickup-item-icon">
+      <div className="summary-icon">
         {icon}
       </div>
 
@@ -2151,31 +2471,102 @@ function PickupItem({
   );
 }
 
-function SummaryRow({
+
+function PickupItem({
+  icon,
   label,
   value,
-  highlight = false,
 }) {
   return (
-    <div
-      className={`summary-row ${
-        highlight
-          ? "highlight"
-          : ""
-      }`}
-    >
+    <div className="pickup-item">
 
-      <span>
-        {label}
-      </span>
+      <div className="pickup-icon">
+        {icon}
+      </div>
 
-      <strong>
-        {value}
-      </strong>
+      <div>
+
+        <span>
+          {label}
+        </span>
+
+        <strong>
+          {value}
+        </strong>
+
+      </div>
 
     </div>
   );
 }
+
+
+function LockedState({
+  title,
+  text,
+}) {
+  return (
+    <div className="locked-state">
+
+      <div className="locked-icon">
+        <ShieldCheck size={23} />
+      </div>
+
+      <div>
+
+        <strong>
+          {title}
+        </strong>
+
+        <span>
+          {text}
+        </span>
+
+      </div>
+
+    </div>
+  );
+}
+
+
+function ChecklistItem({
+  checked,
+  title,
+  text,
+}) {
+  return (
+    <div
+      className={
+        checked
+          ? "checklist-item checked"
+          : "checklist-item"
+      }
+    >
+
+      <div className="check-circle">
+
+        {checked && (
+          <Check size={14} />
+        )}
+
+      </div>
+
+      <div>
+
+        <strong>
+          {title}
+        </strong>
+
+        <span>
+          {text}
+        </span>
+
+      </div>
+
+    </div>
+  );
+}
+
 
 function FlowStep({
   number,
@@ -2185,23 +2576,17 @@ function FlowStep({
 }) {
   return (
     <div
-      className={`flow-step ${
+      className={
         active
-          ? "active"
-          : ""
-      } ${
-        done
-          ? "done"
-          : ""
-      }`}
+          ? "flow-step active"
+          : "flow-step"
+      }
     >
 
       <div className="flow-number">
 
         {done ? (
-          <Check
-            size={12}
-          />
+          <Check size={14} />
         ) : (
           number
         )}
@@ -2215,70 +2600,18 @@ function FlowStep({
     </div>
   );
 }
+
 
 function FlowLine({
   active = false,
 }) {
   return (
     <div
-      className={`flow-line ${
+      className={
         active
-          ? "active"
-          : ""
-      }`}
+          ? "flow-line active"
+          : "flow-line"
+      }
     />
-  );
-}
-
-function SidebarWorkflowStep({
-  number,
-  title,
-  done,
-}) {
-  return (
-    <div
-      className={`sidebar-workflow-step ${
-        done
-          ? "done"
-          : ""
-      }`}
-    >
-
-      <div className="sidebar-workflow-number">
-
-        {done ? (
-          <Check
-            size={11}
-          />
-        ) : (
-          number
-        )}
-
-      </div>
-
-      <span>
-        {title}
-      </span>
-
-    </div>
-  );
-}
-
-function ImpactMetric({
-  value,
-  label,
-}) {
-  return (
-    <div className="impact-banner-metric">
-
-      <strong>
-        {value}
-      </strong>
-
-      <span>
-        {label}
-      </span>
-
-    </div>
   );
 }
