@@ -33,7 +33,6 @@ import { createDonation } from "../services/donationService";
 
 import "./FoodRescue.css";
 
-
 /* =========================================================
    DEMO NGO DATA
    ========================================================= */
@@ -68,7 +67,6 @@ const DEMO_NGOS = [
   },
 ];
 
-
 /* =========================================================
    MAIN PAGE
    ========================================================= */
@@ -78,7 +76,6 @@ export default function FoodRescue() {
   const navigate = useNavigate();
 
   const rescueData = location.state || {};
-
 
   /* =======================================================
      INPUT DATA
@@ -136,7 +133,6 @@ export default function FoodRescue() {
         120
     ) || 120;
 
-
   /* =======================================================
      CALCULATE SURPLUS
      ======================================================= */
@@ -152,7 +148,6 @@ export default function FoodRescue() {
 
   const surplusDetected =
     isSurplus(remainingMeals);
-
 
   /* =======================================================
      STATE
@@ -178,7 +173,6 @@ export default function FoodRescue() {
 
   const [successMessage, setSuccessMessage] =
     useState("");
-
 
   /* =======================================================
      DERIVED DATA
@@ -212,12 +206,33 @@ export default function FoodRescue() {
         }`
       : `${shelfLifeMinutes} min`;
 
-  const selectedNgoCanHandle =
-    selectedNgo
-      ? remainingMeals <=
-        Number(selectedNgo.capacity || 0)
-      : false;
+  /*
+   * IMPORTANT:
+   * An NGO does NOT need to accept the complete surplus.
+   *
+   * Example:
+   * Surplus = 488
+   * NGO capacity = 120
+   * Pickup = 120
+   *
+   * This allows partial NGO pickup.
+   */
 
+  const selectedNgoCanHandle =
+    Boolean(selectedNgo) &&
+    Number(selectedNgo?.capacity || 0) > 0;
+
+  const pickupMeals = selectedNgo
+    ? Math.min(
+        remainingMeals,
+        Number(selectedNgo.capacity || 0)
+      )
+    : 0;
+
+  const remainingAfterPickup = Math.max(
+    0,
+    remainingMeals - pickupMeals
+  );
 
   /* =======================================================
      CREATE SURPLUS EVENT
@@ -269,7 +284,6 @@ export default function FoodRescue() {
           result?.message ||
             "No qualifying surplus was detected."
         );
-
         return;
       }
 
@@ -293,20 +307,18 @@ export default function FoodRescue() {
     }
   };
 
-
   /* =======================================================
      SELECT NGO
      ======================================================= */
 
   const handleSelectNgo = (ngo) => {
-    if (
-      remainingMeals >
-      Number(ngo.capacity || 0)
-    ) {
-      setError(
-        `${ngo.name} can handle ${ngo.capacity} meals, but ${remainingMeals} meals are available.`
-      );
+    const capacity =
+      Number(ngo?.capacity || 0);
 
+    if (!ngo || capacity <= 0) {
+      setError(
+        "This NGO currently has no available pickup capacity."
+      );
       return;
     }
 
@@ -314,7 +326,6 @@ export default function FoodRescue() {
     setSuccessMessage("");
     setSelectedNgo(ngo);
   };
-
 
   /* =======================================================
      SEND DONATION
@@ -328,7 +339,6 @@ export default function FoodRescue() {
       setError(
         "Create the surplus event before notifying an NGO."
       );
-
       return;
     }
 
@@ -336,18 +346,15 @@ export default function FoodRescue() {
       setError(
         "Please select an NGO for pickup."
       );
-
       return;
     }
 
     if (
-      remainingMeals >
-      Number(selectedNgo.capacity || 0)
+      Number(selectedNgo.capacity || 0) <= 0
     ) {
       setError(
-        `${selectedNgo.name} can currently handle ${selectedNgo.capacity} meals, but ${remainingMeals} meals are available.`
+        `${selectedNgo.name} currently has no available pickup capacity.`
       );
-
       return;
     }
 
@@ -369,8 +376,22 @@ export default function FoodRescue() {
 
           servedMeals,
 
+          /*
+           * Actual quantity this NGO will pick up.
+           */
           surplusMeals:
+            pickupMeals,
+
+          /*
+           * Keep the original total surplus
+           * for tracking and reporting.
+           */
+          totalSurplusMeals:
             remainingMeals,
+
+          pickupMeals,
+
+          remainingAfterPickup,
 
           pickupLocation,
 
@@ -414,7 +435,14 @@ export default function FoodRescue() {
           servedMeals,
 
           surplusMeals:
+            pickupMeals,
+
+          totalSurplusMeals:
             remainingMeals,
+
+          pickupMeals,
+
+          remainingAfterPickup,
 
           pickupLocation,
 
@@ -439,7 +467,6 @@ export default function FoodRescue() {
     }
   };
 
-
   /* =======================================================
      BACK
      ======================================================= */
@@ -450,18 +477,23 @@ export default function FoodRescue() {
       {
         state: {
           date,
+
           mealType,
+
           predictedMeals,
+
           cookedMeals:
             preparedMeals,
+
           servedMeals,
+
           dayType,
+
           campusPopulation,
         },
       }
     );
   };
-
 
   /* =======================================================
      IMPACT
@@ -476,7 +508,6 @@ export default function FoodRescue() {
   const estimatedCo2 =
     (remainingMeals * 0.45).toFixed(1);
 
-
   /* =======================================================
      RENDER
      ======================================================= */
@@ -489,7 +520,6 @@ export default function FoodRescue() {
           ================================================= */}
 
       <div className="rescue-bg">
-
         <div className="rescue-grid-bg" />
 
         <div className="rescue-glow rescue-glow-one" />
@@ -503,16 +533,13 @@ export default function FoodRescue() {
         <span className="rescue-particle p3" />
         <span className="rescue-particle p4" />
         <span className="rescue-particle p5" />
-
       </div>
-
 
       {/* =================================================
           HEADER
           ================================================= */}
 
       <header className="food-rescue-header">
-
         <div className="food-rescue-header-inner">
 
           <button
@@ -526,19 +553,15 @@ export default function FoodRescue() {
             </span>
           </button>
 
-
           <div className="food-rescue-title">
 
             <div className="food-rescue-title-icon">
-
               <HeartHandshake
                 size={21}
               />
-
             </div>
 
             <div>
-
               <h1>
                 Food Rescue
               </h1>
@@ -546,27 +569,19 @@ export default function FoodRescue() {
               <p>
                 Community rescue command center
               </p>
-
             </div>
 
           </div>
 
-
           <div className="rescue-live-indicator">
-
             <span />
-
             RESCUE NETWORK ONLINE
-
           </div>
 
         </div>
-
       </header>
 
-
       <main className="food-rescue-container">
-
 
         {/* =================================================
             ALERTS
@@ -582,7 +597,6 @@ export default function FoodRescue() {
             </div>
 
             <div>
-
               <strong>
                 Action required
               </strong>
@@ -590,7 +604,6 @@ export default function FoodRescue() {
               <p>
                 {error}
               </p>
-
             </div>
 
             <button
@@ -604,7 +617,6 @@ export default function FoodRescue() {
           </div>
         )}
 
-
         {successMessage && (
           <div className="food-rescue-alert success">
 
@@ -615,7 +627,6 @@ export default function FoodRescue() {
             </div>
 
             <div>
-
               <strong>
                 Rescue workflow updated
               </strong>
@@ -623,12 +634,10 @@ export default function FoodRescue() {
               <p>
                 {successMessage}
               </p>
-
             </div>
 
           </div>
         )}
-
 
         {/* =================================================
             HERO
@@ -639,20 +648,15 @@ export default function FoodRescue() {
           <div className="rescue-hero-copy">
 
             <div className="rescue-eyebrow">
-
               <span />
-
               STEP 04 · FOOD RESCUE
-
             </div>
-
 
             <h2>
               Rescue food.
               <br />
               <em>Restore impact.</em>
             </h2>
-
 
             <p>
               ReFeed has detected unused meals.
@@ -661,11 +665,9 @@ export default function FoodRescue() {
               life expires.
             </p>
 
-
             <div className="rescue-hero-actions">
 
               <div className="hero-status-pill">
-
                 <HeartHandshake
                   size={14}
                 />
@@ -673,11 +675,9 @@ export default function FoodRescue() {
                 {surplusDetected
                   ? "Surplus detected"
                   : "Monitoring surplus"}
-
               </div>
 
               <div className="hero-status-pill">
-
                 <Clock3
                   size={14}
                 />
@@ -685,13 +685,11 @@ export default function FoodRescue() {
                 {formattedShelfLife}
                 {" "}
                 shelf life
-
               </div>
 
             </div>
 
           </div>
-
 
           {/* =================================================
               3D RESCUE CORE
@@ -700,23 +698,17 @@ export default function FoodRescue() {
           <div className="rescue-hero-visual">
 
             <div className="rescue-orbit orbit-a" />
-
             <div className="rescue-orbit orbit-b" />
-
             <div className="rescue-orbit orbit-c" />
 
-
             <div className="rescue-core-shadow" />
-
 
             <div className="rescue-core">
 
               <div className="rescue-core-ring">
-
                 <HeartHandshake
                   size={39}
                 />
-
               </div>
 
               <span>
@@ -733,13 +725,11 @@ export default function FoodRescue() {
 
             </div>
 
-
             <div className="floating-rescue-card card-food">
 
               <Leaf size={14} />
 
               <div>
-
                 <span>
                   FOOD SAVED
                 </span>
@@ -747,18 +737,15 @@ export default function FoodRescue() {
                 <strong>
                   {estimatedWeight} kg
                 </strong>
-
               </div>
 
             </div>
-
 
             <div className="floating-rescue-card card-ngo">
 
               <Users size={14} />
 
               <div>
-
                 <span>
                   NGO NETWORK
                 </span>
@@ -766,18 +753,15 @@ export default function FoodRescue() {
                 <strong>
                   {DEMO_NGOS.length} nearby
                 </strong>
-
               </div>
 
             </div>
-
 
             <div className="floating-rescue-card card-impact">
 
               <Zap size={14} />
 
               <div>
-
                 <span>
                   CO₂ AVOIDED
                 </span>
@@ -785,15 +769,12 @@ export default function FoodRescue() {
                 <strong>
                   {estimatedCo2} kg
                 </strong>
-
               </div>
 
             </div>
 
           </div>
-
         </section>
-
 
         {/* =================================================
             WORKFLOW
@@ -891,7 +872,6 @@ export default function FoodRescue() {
 
         </section>
 
-
         {/* =================================================
             SURPLUS STATUS
             ================================================= */}
@@ -920,7 +900,6 @@ export default function FoodRescue() {
 
             </div>
 
-
             <div>
 
               <span>
@@ -943,9 +922,7 @@ export default function FoodRescue() {
 
           </div>
 
-
           <div className="surplus-status-number">
-
             <strong>
               {remainingMeals}
             </strong>
@@ -953,11 +930,9 @@ export default function FoodRescue() {
             <span>
               meals
             </span>
-
           </div>
 
         </section>
-
 
         {/* =================================================
             MAIN GRID
@@ -965,13 +940,11 @@ export default function FoodRescue() {
 
         <section className="food-rescue-grid">
 
-
           {/* =================================================
               LEFT
               ================================================= */}
 
           <div className="food-rescue-main">
-
 
             {/* ---------------------------------------------
                 STEP 01
@@ -989,7 +962,6 @@ export default function FoodRescue() {
                   />
                 }
               />
-
 
               <div className="operation-metrics">
 
@@ -1026,7 +998,6 @@ export default function FoodRescue() {
 
               </div>
 
-
               <div
                 className={`detection-panel ${
                   surplusDetected
@@ -1049,27 +1020,21 @@ export default function FoodRescue() {
 
                 </div>
 
-
                 <div className="detection-copy">
 
                   <strong>
-
                     {surplusDetected
                       ? "Surplus detected"
                       : "No qualifying surplus"}
-
                   </strong>
 
                   <p>
-
                     {surplusDetected
                       ? `${remainingMeals} meals remain and can be redirected to a nearby community partner.`
                       : `At least ${SURPLUS_THRESHOLD + 1} meals must remain before a rescue event can be created.`}
-
                   </p>
 
                 </div>
-
 
                 <div className="detection-badge">
 
@@ -1080,7 +1045,6 @@ export default function FoodRescue() {
                 </div>
 
               </div>
-
 
               {!surplusEvent && (
                 <button
@@ -1120,20 +1084,16 @@ export default function FoodRescue() {
                 </button>
               )}
 
-
               {surplusEvent && (
                 <div className="event-created">
 
                   <div className="event-created-icon">
-
                     <CheckCircle2
                       size={17}
                     />
-
                   </div>
 
                   <div>
-
                     <strong>
                       Surplus event created
                     </strong>
@@ -1142,7 +1102,6 @@ export default function FoodRescue() {
                       Event ID:{" "}
                       {surplusEvent.id}
                     </span>
-
                   </div>
 
                   <Check
@@ -1154,7 +1113,6 @@ export default function FoodRescue() {
 
             </div>
 
-
             {/* ---------------------------------------------
                 STEP 02
                 --------------------------------------------- */}
@@ -1164,14 +1122,13 @@ export default function FoodRescue() {
               <CardHeader
                 step="02"
                 title="Find the right NGO"
-                description="Choose a nearby community partner with enough capacity for the available meals."
+                description="Choose a nearby community partner. NGOs can receive part or all of the surplus based on their available capacity."
                 icon={
                   <Users
                     size={18}
                   />
                 }
               />
-
 
               {!surplusEvent ? (
                 <LockedState
@@ -1187,12 +1144,26 @@ export default function FoodRescue() {
                 <div className="ngo-grid">
 
                   {DEMO_NGOS.map(
-                    (ngo, index) => {
+                    (ngo) => {
+
+                      /*
+                       * Partial pickup is supported.
+                       * An NGO can be selected even when
+                       * its capacity is smaller than the
+                       * total surplus.
+                       */
 
                       const canHandle =
-                        remainingMeals <=
                         Number(
                           ngo.capacity || 0
+                        ) > 0;
+
+                      const pickupForNgo =
+                        Math.min(
+                          remainingMeals,
+                          Number(
+                            ngo.capacity || 0
+                          )
                         );
 
                       const selected =
@@ -1226,11 +1197,9 @@ export default function FoodRescue() {
                           <div className="ngo-option-top">
 
                             <div className="ngo-avatar">
-
                               <HeartHandshake
                                 size={18}
                               />
-
                             </div>
 
                             <div className="ngo-name">
@@ -1252,52 +1221,42 @@ export default function FoodRescue() {
                                   : ""
                               }`}
                             >
-
                               {selected && (
                                 <Check
                                   size={12}
                                 />
                               )}
-
                             </div>
 
                           </div>
 
-
                           <div className="ngo-meta">
 
                             <span>
-
                               <MapPin
                                 size={12}
                               />
 
                               {ngo.distance}
-
                             </span>
 
                             <span>
-
                               <PackageCheck
                                 size={12}
                               />
 
                               {ngo.capacity} meals
-
                             </span>
 
                             <span>
-
                               <Clock3
                                 size={12}
                               />
 
                               {ngo.responseTime}
-
                             </span>
 
                           </div>
-
 
                           <div className="ngo-capacity">
 
@@ -1320,15 +1279,12 @@ export default function FoodRescue() {
                                   : "capacity-bad"
                               }
                             >
-
                               {canHandle
-                                ? "Available"
-                                : "Insufficient"}
-
+                                ? `Can receive ${pickupForNgo}`
+                                : "Unavailable"}
                             </span>
 
                           </div>
-
 
                           {selected && (
                             <div className="ngo-selected-banner">
@@ -1337,7 +1293,8 @@ export default function FoodRescue() {
                                 size={13}
                               />
 
-                              NGO selected for pickup
+                              NGO selected · pickup{" "}
+                              {pickupForNgo} meals
 
                             </div>
                           )}
@@ -1351,7 +1308,6 @@ export default function FoodRescue() {
               )}
 
             </div>
-
 
             {/* ---------------------------------------------
                 STEP 03
@@ -1369,7 +1325,6 @@ export default function FoodRescue() {
                   />
                 }
               />
-
 
               <div className="pickup-grid">
 
@@ -1403,8 +1358,22 @@ export default function FoodRescue() {
                       size={15}
                     />
                   }
-                  label="Available meals"
+                  label="Available surplus"
                   value={`${remainingMeals} meals`}
+                />
+
+                <PickupItem
+                  icon={
+                    <Truck
+                      size={15}
+                    />
+                  }
+                  label="NGO pickup"
+                  value={
+                    selectedNgo
+                      ? `${pickupMeals} meals`
+                      : "Select NGO"
+                  }
                 />
 
                 <PickupItem
@@ -1422,15 +1391,12 @@ export default function FoodRescue() {
 
               </div>
 
-
               <div className="pickup-alert">
 
                 <div>
-
                   <Clock3
                     size={15}
                   />
-
                 </div>
 
                 <p>
@@ -1443,7 +1409,6 @@ export default function FoodRescue() {
               </div>
 
             </div>
-
 
             {/* ---------------------------------------------
                 STEP 04
@@ -1462,7 +1427,6 @@ export default function FoodRescue() {
                 }
               />
 
-
               {!selectedNgo ? (
                 <LockedState
                   icon={
@@ -1471,19 +1435,16 @@ export default function FoodRescue() {
                     />
                   }
                   title="Waiting for NGO selection"
-                  text="Select an eligible NGO above to prepare the pickup notification."
+                  text="Select an NGO above to prepare the pickup notification."
                 />
               ) : (
                 <div className="notification-preview">
 
                   <div className="notification-preview-icon">
-
                     <Send
                       size={19}
                     />
-
                   </div>
-
 
                   <div className="notification-preview-content">
 
@@ -1497,15 +1458,21 @@ export default function FoodRescue() {
                     </strong>
 
                     <p>
-                      {remainingMeals} meals
-                      are available at{" "}
+                      {pickupMeals} meals
+                      will be picked up from{" "}
                       {pickupLocation}.
                       Estimated NGO response:{" "}
                       {
                         selectedNgo.responseTime
                       }.
+                      {remainingAfterPickup > 0 && (
+                        <>
+                          {" "}
+                          {remainingAfterPickup} meals will remain
+                          available for another rescue partner.
+                        </>
+                      )}
                     </p>
-
 
                     <div className="notification-phone">
 
@@ -1519,7 +1486,6 @@ export default function FoodRescue() {
 
                   </div>
 
-
                   <div className="notification-ready">
 
                     <span />
@@ -1530,7 +1496,6 @@ export default function FoodRescue() {
 
                 </div>
               )}
-
 
               <button
                 className="primary-rescue-button notification-button"
@@ -1574,6 +1539,8 @@ export default function FoodRescue() {
                     />
 
                     Send Pickup Notification
+                    {selectedNgo &&
+                      ` · ${pickupMeals} meals`}
 
                     <ArrowRight
                       size={15}
@@ -1587,13 +1554,11 @@ export default function FoodRescue() {
 
           </div>
 
-
           {/* =================================================
               RIGHT SIDEBAR
               ================================================= */}
 
           <aside className="food-rescue-sidebar">
-
 
             {/* ---------------------------------------------
                 RESCUE SUMMARY
@@ -1616,13 +1581,10 @@ export default function FoodRescue() {
                 </div>
 
                 <div className="summary-live-dot">
-
                   <span />
-
                 </div>
 
               </div>
-
 
               <div className="summary-big-number">
 
@@ -1634,15 +1596,12 @@ export default function FoodRescue() {
 
               </div>
 
-
               <p>
                 potential food diverted
                 from waste
               </p>
 
-
               <div className="summary-divider" />
-
 
               <SummaryRow
                 label="Threshold"
@@ -1688,7 +1647,6 @@ export default function FoodRescue() {
 
             </div>
 
-
             {/* ---------------------------------------------
                 PROGRESS
                 --------------------------------------------- */}
@@ -1715,7 +1673,6 @@ export default function FoodRescue() {
 
               </div>
 
-
               <div className="rescue-progress-track">
 
                 <div
@@ -1726,7 +1683,6 @@ export default function FoodRescue() {
                 />
 
               </div>
-
 
               <div className="sidebar-workflow">
 
@@ -1772,7 +1728,6 @@ export default function FoodRescue() {
 
             </div>
 
-
             {/* ---------------------------------------------
                 SELECTED NGO
                 --------------------------------------------- */}
@@ -1799,18 +1754,15 @@ export default function FoodRescue() {
 
               </div>
 
-
               {selectedNgo ? (
                 <>
 
                   <div className="selected-ngo-main">
 
                     <div className="selected-ngo-avatar">
-
                       <HeartHandshake
                         size={18}
                       />
-
                     </div>
 
                     <div>
@@ -1831,7 +1783,6 @@ export default function FoodRescue() {
 
                   </div>
 
-
                   <div className="selected-ngo-detail">
 
                     <MapPin
@@ -1843,7 +1794,6 @@ export default function FoodRescue() {
                     </span>
 
                   </div>
-
 
                   <div className="selected-ngo-detail">
 
@@ -1857,12 +1807,42 @@ export default function FoodRescue() {
 
                   </div>
 
+                  <div className="selected-ngo-detail">
+
+                    <PackageCheck
+                      size={13}
+                    />
+
+                    <span>
+                      Pickup quantity:{" "}
+                      {pickupMeals} meals
+                    </span>
+
+                  </div>
+
+                  {remainingAfterPickup > 0 && (
+                    <div className="selected-ngo-detail">
+
+                      <PackageCheck
+                        size={13}
+                      />
+
+                      <span>
+                        Remaining after pickup:{" "}
+                        {remainingAfterPickup} meals
+                      </span>
+
+                    </div>
+                  )}
+
                 </>
               ) : (
                 <div className="empty-ngo">
 
                   <div>
-                    <Users size={19} />
+                    <Users
+                      size={19}
+                    />
                   </div>
 
                   <strong>
@@ -1878,7 +1858,6 @@ export default function FoodRescue() {
               )}
 
             </div>
-
 
             {/* ---------------------------------------------
                 IMPACT PREVIEW
@@ -1901,7 +1880,7 @@ export default function FoodRescue() {
                 </span>
 
                 <strong>
-                  {estimatedWeight} kg food saved
+                  {estimatedWeight} kg food available for rescue
                 </strong>
 
                 <p>
@@ -1916,7 +1895,6 @@ export default function FoodRescue() {
           </aside>
 
         </section>
-
 
         {/* =================================================
             FINAL IMPACT BANNER
@@ -1955,7 +1933,6 @@ export default function FoodRescue() {
 
           </div>
 
-
           <div className="impact-banner-metrics">
 
             <ImpactMetric
@@ -1963,6 +1940,15 @@ export default function FoodRescue() {
                 remainingMeals
               }
               label="Meals available"
+            />
+
+            <ImpactMetric
+              value={
+                selectedNgo
+                  ? `${pickupMeals}`
+                  : "—"
+              }
+              label="NGO pickup meals"
             />
 
             <ImpactMetric
@@ -1978,7 +1964,6 @@ export default function FoodRescue() {
           </div>
 
         </section>
-
 
         {/* =================================================
             BOTTOM ACTIONS
@@ -1999,7 +1984,6 @@ export default function FoodRescue() {
 
           </button>
 
-
           <div>
 
             <button
@@ -2016,7 +2000,6 @@ export default function FoodRescue() {
               />
 
             </button>
-
 
             {donation && (
               <button
@@ -2053,7 +2036,6 @@ export default function FoodRescue() {
   );
 }
 
-
 /* =========================================================
    COMPONENTS
    ========================================================= */
@@ -2083,7 +2065,6 @@ function CardHeader({
 
       </div>
 
-
       <div className="card-header-icon">
         {icon}
       </div>
@@ -2091,7 +2072,6 @@ function CardHeader({
     </div>
   );
 }
-
 
 function OperationMetric({
   label,
@@ -2119,7 +2099,6 @@ function OperationMetric({
   );
 }
 
-
 function LockedState({
   icon,
   title,
@@ -2143,7 +2122,6 @@ function LockedState({
     </div>
   );
 }
-
 
 function PickupItem({
   icon,
@@ -2173,7 +2151,6 @@ function PickupItem({
   );
 }
 
-
 function SummaryRow({
   label,
   value,
@@ -2200,7 +2177,6 @@ function SummaryRow({
   );
 }
 
-
 function FlowStep({
   number,
   title,
@@ -2223,7 +2199,9 @@ function FlowStep({
       <div className="flow-number">
 
         {done ? (
-          <Check size={12} />
+          <Check
+            size={12}
+          />
         ) : (
           number
         )}
@@ -2238,7 +2216,6 @@ function FlowStep({
   );
 }
 
-
 function FlowLine({
   active = false,
 }) {
@@ -2252,7 +2229,6 @@ function FlowLine({
     />
   );
 }
-
 
 function SidebarWorkflowStep({
   number,
@@ -2271,7 +2247,9 @@ function SidebarWorkflowStep({
       <div className="sidebar-workflow-number">
 
         {done ? (
-          <Check size={11} />
+          <Check
+            size={11}
+          />
         ) : (
           number
         )}
@@ -2285,7 +2263,6 @@ function SidebarWorkflowStep({
     </div>
   );
 }
-
 
 function ImpactMetric({
   value,

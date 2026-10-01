@@ -7,7 +7,6 @@ import {
   HeartHandshake,
   Leaf,
   Menu,
-  PackageCheck,
   Recycle,
   Sparkles,
   Truck,
@@ -17,10 +16,6 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import "./LandingPage.css";
-
-/* =========================================================
-   DATA
-   ========================================================= */
 
 const features = [
   {
@@ -84,10 +79,6 @@ const workflowSteps = [
   },
 ];
 
-/* =========================================================
-   ANIMATED NUMBER
-   ========================================================= */
-
 function AnimatedNumber({ value, suffix = "" }) {
   const [displayValue, setDisplayValue] = useState(0);
 
@@ -96,11 +87,11 @@ function AnimatedNumber({ value, suffix = "" }) {
     const duration = 1400;
     const startTime = performance.now();
 
-    let frameId;
+    let frame;
 
-    const animate = (currentTime) => {
+    const animate = (time) => {
       const progress = Math.min(
-        (currentTime - startTime) / duration,
+        (time - startTime) / duration,
         1
       );
 
@@ -112,35 +103,27 @@ function AnimatedNumber({ value, suffix = "" }) {
       );
 
       if (progress < 1) {
-        frameId = requestAnimationFrame(animate);
+        frame = requestAnimationFrame(animate);
       }
     };
 
-    frameId = requestAnimationFrame(animate);
+    frame = requestAnimationFrame(animate);
 
-    return () => {
-      cancelAnimationFrame(frameId);
-    };
+    return () => cancelAnimationFrame(frame);
   }, [value]);
 
   return (
-    <span>
+    <>
       {displayValue.toLocaleString()}
       {suffix}
-    </span>
+    </>
   );
 }
-
-/* =========================================================
-   NAVBAR
-   ========================================================= */
 
 function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const closeMenu = () => {
-    setMenuOpen(false);
-  };
+  const closeMenu = () => setMenuOpen(false);
 
   return (
     <header className="rf-navbar">
@@ -196,7 +179,7 @@ function Navbar() {
 
           <Link
             to="/login"
-            className="rf-nav-login mobile-login"
+            className="mobile-login"
             onClick={closeMenu}
           >
             Login
@@ -221,29 +204,22 @@ function Navbar() {
         </div>
 
         <button
-          type="button"
           className="rf-menu-button"
-          onClick={() => setMenuOpen(!menuOpen)}
-          aria-label={
-            menuOpen
-              ? "Close navigation"
-              : "Open navigation"
+          onClick={() =>
+            setMenuOpen(!menuOpen)
           }
+          aria-label="Toggle navigation"
         >
           {menuOpen ? (
-            <X size={22} />
+            <X size={21} />
           ) : (
-            <Menu size={22} />
+            <Menu size={21} />
           )}
         </button>
       </div>
     </header>
   );
 }
-
-/* =========================================================
-   BACKGROUND
-   ========================================================= */
 
 function BackgroundScene() {
   return (
@@ -262,7 +238,7 @@ function BackgroundScene() {
 
       <div className="rf-floating-particles">
         {Array.from(
-          { length: 24 },
+          { length: 28 },
           (_, index) => (
             <span
               key={index}
@@ -277,10 +253,6 @@ function BackgroundScene() {
     </div>
   );
 }
-
-/* =========================================================
-   AI CORE
-   ========================================================= */
 
 function AICore() {
   return (
@@ -318,10 +290,6 @@ function AICore() {
   );
 }
 
-/* =========================================================
-   FLOATING FORECAST CARD
-   ========================================================= */
-
 function ForecastCard() {
   return (
     <div className="rf-floating-card rf-forecast-card">
@@ -357,10 +325,6 @@ function ForecastCard() {
   );
 }
 
-/* =========================================================
-   WEATHER CARD
-   ========================================================= */
-
 function WeatherCard() {
   return (
     <div className="rf-floating-card rf-weather-card">
@@ -375,15 +339,13 @@ function WeatherCard() {
 
         <strong>28°</strong>
 
-        <span>Light rain expected</span>
+        <span>
+          Light rain expected
+        </span>
       </div>
     </div>
   );
 }
-
-/* =========================================================
-   IMPACT CARD
-   ========================================================= */
 
 function ImpactMiniCard() {
   return (
@@ -398,22 +360,14 @@ function ImpactMiniCard() {
         </span>
 
         <strong>
-          <AnimatedNumber
-            value={1248}
-          />
+          <AnimatedNumber value={1248} />
         </strong>
 
-        <small>
-          this month
-        </small>
+        <small>this month</small>
       </div>
     </div>
   );
 }
-
-/* =========================================================
-   HERO
-   ========================================================= */
 
 function Hero() {
   return (
@@ -430,15 +384,14 @@ function Hero() {
           <h1>
             Feed people.
             <br />
-
             <span>Not landfills.</span>
           </h1>
 
           <p>
             ReFeed predicts campus meal demand,
-            optimizes preparation, detects surplus
-            and connects safe excess food with nearby
-            NGOs.
+            optimizes preparation, detects
+            surplus and connects safe excess
+            food with nearby NGOs.
           </p>
 
           <div className="rf-hero-actions">
@@ -455,6 +408,7 @@ function Hero() {
               className="rf-secondary-button"
             >
               Explore the workflow
+
               <span>
                 <ArrowRight size={15} />
               </span>
@@ -464,23 +418,17 @@ function Hero() {
           <div className="rf-hero-trust">
             <div className="rf-trust-item">
               <CheckCircle2 size={15} />
-              <span>
-                Demand forecasting
-              </span>
+              Demand forecasting
             </div>
 
             <div className="rf-trust-item">
               <CheckCircle2 size={15} />
-              <span>
-                Surplus detection
-              </span>
+              Surplus detection
             </div>
 
             <div className="rf-trust-item">
               <CheckCircle2 size={15} />
-              <span>
-                NGO dispatch
-              </span>
+              NGO dispatch
             </div>
           </div>
         </div>
@@ -506,10 +454,6 @@ function Hero() {
   );
 }
 
-/* =========================================================
-   FEATURES
-   ========================================================= */
-
 function Features() {
   return (
     <section
@@ -530,9 +474,10 @@ function Features() {
           </h2>
 
           <p>
-            ReFeed connects prediction, preparation,
-            operations and food rescue into one
-            continuous campus workflow.
+            ReFeed connects prediction,
+            preparation, operations and food
+            rescue into one continuous campus
+            workflow.
           </p>
         </div>
 
@@ -575,10 +520,6 @@ function Features() {
   );
 }
 
-/* =========================================================
-   WORKFLOW
-   ========================================================= */
-
 function Workflow() {
   const [activeStep, setActiveStep] =
     useState(0);
@@ -590,17 +531,10 @@ function Workflow() {
           (current + 1) %
           workflowSteps.length
       );
-    }, 3200);
+    }, 3000);
 
-    return () => {
-      clearInterval(interval);
-    };
+    return () => clearInterval(interval);
   }, []);
-
-  const progress =
-    (activeStep /
-      (workflowSteps.length - 1)) *
-    100;
 
   return (
     <section
@@ -639,7 +573,11 @@ function Workflow() {
             <div
               className="rf-workflow-line-progress"
               style={{
-                width: `${progress}%`,
+                width: `${
+                  (activeStep /
+                    (workflowSteps.length - 1)) *
+                  100
+                }%`,
               }}
             />
           </div>
@@ -649,22 +587,16 @@ function Workflow() {
               (step, index) => {
                 const Icon = step.icon;
 
-                const isActive =
-                  index === activeStep;
-
-                const isCompleted =
-                  index < activeStep;
-
                 return (
                   <button
-                    type="button"
                     key={step.number}
+                    type="button"
                     className={`rf-workflow-step ${
-                      isActive
+                      index === activeStep
                         ? "active"
                         : ""
                     } ${
-                      isCompleted
+                      index < activeStep
                         ? "completed"
                         : ""
                     }`}
@@ -676,13 +608,11 @@ function Workflow() {
                       <div className="rf-workflow-ring" />
 
                       <div className="rf-workflow-circle">
-                        <Icon
-                          size={25}
-                          strokeWidth={1.8}
-                        />
+                        <Icon size={25} />
                       </div>
 
-                      {isActive && (
+                      {index ===
+                        activeStep && (
                         <span className="rf-workflow-pulse" />
                       )}
                     </div>
@@ -692,9 +622,7 @@ function Workflow() {
                         STEP {step.number}
                       </span>
 
-                      <h3>
-                        {step.title}
-                      </h3>
+                      <h3>{step.title}</h3>
 
                       <p>
                         {step.description}
@@ -717,55 +645,51 @@ function Workflow() {
               />
             </div>
           </div>
-        </div>
 
-        <div className="rf-workflow-status">
-          <div className="rf-live-status">
-            <span />
-            LIVE PROCESS
-          </div>
+          <div className="rf-workflow-status">
+            <div className="rf-live-status">
+              <span />
+              LIVE PROCESS
+            </div>
 
-          <div className="rf-status-separator" />
+            <div className="rf-status-separator" />
 
-          <div className="rf-current-process">
-            Currently optimizing{" "}
-            <strong>
-              {
-                workflowSteps[
-                  activeStep
-                ].title
-              }
-            </strong>
-          </div>
+            <div className="rf-current-process">
+              Currently optimizing{" "}
+              <strong>
+                {
+                  workflowSteps[
+                    activeStep
+                  ].title
+                }
+              </strong>
+            </div>
 
-          <div className="rf-process-dots">
-            {workflowSteps.map(
-              (step, index) => (
-                <button
-                  key={step.number}
-                  type="button"
-                  aria-label={`Show ${step.title} step`}
-                  className={
-                    index === activeStep
-                      ? "active"
-                      : ""
-                  }
-                  onClick={() =>
-                    setActiveStep(index)
-                  }
-                />
-              )
-            )}
+            <div className="rf-process-dots">
+              {workflowSteps.map(
+                (step, index) => (
+                  <button
+                    key={step.number}
+                    type="button"
+                    aria-label={`Show ${step.title} step`}
+                    className={
+                      index === activeStep
+                        ? "active"
+                        : ""
+                    }
+                    onClick={() =>
+                      setActiveStep(index)
+                    }
+                  />
+                )
+              )}
+            </div>
           </div>
         </div>
       </div>
     </section>
   );
 }
-
-/* =========================================================
-   IMPACT
-   ========================================================= */
 
 function Impact() {
   return (
@@ -790,31 +714,25 @@ function Impact() {
 
             <p>
               Turn daily canteen operations into
-              measurable environmental and social
-              outcomes.
+              measurable environmental and
+              social outcomes.
             </p>
 
             <div className="rf-impact-list">
               <div>
                 <CheckCircle2 size={17} />
-                <span>
-                  Reduce unnecessary food
-                  preparation
-                </span>
+                Reduce unnecessary food
+                preparation
               </div>
 
               <div>
                 <CheckCircle2 size={17} />
-                <span>
-                  Connect surplus with NGOs
-                </span>
+                Connect surplus with NGOs
               </div>
 
               <div>
                 <CheckCircle2 size={17} />
-                <span>
-                  Track cumulative impact
-                </span>
+                Track cumulative impact
               </div>
             </div>
 
@@ -894,13 +812,20 @@ function Impact() {
               <div className="rf-chart-area">
                 <div className="rf-chart-line" />
 
-                <span className="rf-chart-point p1" />
-                <span className="rf-chart-point p2" />
-                <span className="rf-chart-point p3" />
-                <span className="rf-chart-point p4" />
-                <span className="rf-chart-point p5" />
-                <span className="rf-chart-point p6" />
-                <span className="rf-chart-point p7" />
+                {[
+                  "p1",
+                  "p2",
+                  "p3",
+                  "p4",
+                  "p5",
+                  "p6",
+                  "p7",
+                ].map((point) => (
+                  <span
+                    key={point}
+                    className={`rf-chart-point ${point}`}
+                  />
+                ))}
               </div>
 
               <div className="rf-chart-days">
@@ -919,10 +844,6 @@ function Impact() {
     </section>
   );
 }
-
-/* =========================================================
-   CTA
-   ========================================================= */
 
 function CTA() {
   return (
@@ -948,7 +869,7 @@ function CTA() {
             to="/signup"
             className="rf-primary-button"
           >
-            Build with ReFeed
+            Start with ReFeed
             <ArrowRight size={17} />
           </Link>
         </div>
@@ -957,79 +878,38 @@ function CTA() {
   );
 }
 
-/* =========================================================
-   FOOTER
-   ========================================================= */
-
 function Footer() {
   return (
     <footer className="rf-footer">
       <div className="rf-section-container">
-        <div className="rf-footer-main">
-          <Link
-            to="/"
-            className="rf-footer-brand"
-          >
-            <div className="rf-footer-logo">
-              <img
-                src="/logo.png"
-                alt="ReFeed logo"
-              />
-            </div>
-
-            <div>
-              <strong>ReFeed</strong>
-              <span>
-                Predict • Prepare • Serve • Rescue
-              </span>
-            </div>
-          </Link>
-
-          <div className="rf-footer-links">
-            <a href="#features">
-              Features
-            </a>
-
-            <a href="#workflow">
-              Workflow
-            </a>
-
-            <a href="#impact">
-              Impact
-            </a>
-
-            <Link to="/login">
-              Login
-            </Link>
+        <div className="rf-footer-brand">
+          <div className="rf-brand-logo">
+            <img
+              src="/logo.png"
+              alt="ReFeed"
+            />
           </div>
-        </div>
 
-        <div className="rf-footer-bottom">
-          <span>
-            © {new Date().getFullYear()} ReFeed.
-            Built for smarter campus food systems.
-          </span>
-
-          <div className="rf-footer-tech">
+          <div>
+            <strong>ReFeed</strong>
             <span>
-              <Leaf size={13} />
-              LESS WASTE
-            </span>
-
-            <span>
-              <HeartHandshake size={13} />
-              MORE IMPACT
+              FOOD • DATA • IMPACT
             </span>
           </div>
         </div>
+
+        <p>
+          Predict better. Prepare smarter.
+          Rescue more.
+        </p>
+
+        <span className="rf-footer-copy">
+          © 2026 ReFeed
+        </span>
       </div>
     </footer>
   );
 }
-
-/* =========================================================
-   MAIN LANDING PAGE
-   ========================================================= */
 
 export default function LandingPage() {
   return (
