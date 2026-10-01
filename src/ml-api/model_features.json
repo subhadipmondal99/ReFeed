@@ -9,13 +9,15 @@
   "rainfall_mm",
   "campus_population",
   "month",
+  "day",
   "week_of_year",
   "sin_day",
   "cos_day",
-  "lag_1",
-  "lag_7",
-  "lag_14",
-  "rolling_7",
-  "rolling_14",
-  "rolling_30"
+  "historical_rate_mean",
+  "rate_lag_1",
+  "rate_lag_7",
+  "rate_lag_14",
+  "rate_rolling_7",
+  "rate_rolling_14",
+  "rate_rolling_30"
 ]
